@@ -5,6 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import openpyxl
 import csv
+import json
 
 
 def main():
@@ -15,12 +16,14 @@ def main():
     # Clean data
     df_clean = clean_data(df_raw)
 
+    # The matrix can be stored locally to speed up the computations
+    # When running this for the first time, set saved_matrix to False
+    saved_matrix = False
+
     # Create a customer - product matrix (n x m)
-    saved_csv = False
-    matrix, customers_map, products_map = create_matrix(df_clean, savedcsv=saved_csv)
-    if not saved_csv:
-        # Save the intermediary result
-        save_matrix(matrix, customers_map, products_map)
+    matrix, customers_map, products_map = create_matrix(df_clean, saved=saved_matrix)
+    # Save the intermediary result
+    save_matrix(matrix, customers_map, products_map, saved=saved_matrix)
 
 
 def process_data(filename, savedcsv):
@@ -29,9 +32,7 @@ def process_data(filename, savedcsv):
         # Load the .xslx file
         xslx_file = openpyxl.load_workbook(filename).active
         # Create csv file
-        csv_file = csv.writer(open("./data/data-raw.csv",
-                                   'w',
-                                   newline=""))
+        csv_file = csv.writer(open("./data/data-raw.csv", 'w', newline=""))
         # Read the excel file per row and write it to the .csv file
         for row in xslx_file.rows:
             csv_file.writerow([cell.value for cell in row])
@@ -63,8 +64,9 @@ def clean_data(df):
     return df
 
 
-def create_matrix(df_clean, savedcsv):
-    if not savedcsv:
+def create_matrix(df_clean, saved):
+    # If the matrix hasn't been saved locally, compute the matrix
+    if not saved:
         # Group by CustomerID and StockCode and sum over the quantity
         # (some customers have bought a product more than once)
         df_clean = df_clean.groupby(['CustomerID', 'StockCode']).agg({'Quantity': ['sum']}).reset_index()
@@ -95,29 +97,24 @@ def create_matrix(df_clean, savedcsv):
     else:
         matrix = genfromtxt('./data/matrix.csv', delimiter=',')
 
-        csv_file = open('./data/customers_map.csv', 'w')
-        reader = csv.reader(csv_file)
-        customers_map = dict(reader)
+        json_file = open('./data/customers_map.json', 'w')
+        customers_map = json.load(json_file)
 
-        csv_file = open('./data/products_map.csv', 'w')
-        reader = csv.reader(csv_file)
-        products_map = dict(reader)
+        json_file = open('./data/products_map.json', 'w')
+        products_map = json.load(json_file)
 
     return matrix, customers_map, products_map
 
 
-def save_matrix(matrix, customers_map, products_map):
-    np.savetxt('./data/matrix.csv', matrix, delimiter=',')
+def save_matrix(matrix, customers_map, products_map, saved):
+    if not saved:
+        np.savetxt('./data/matrix.csv', matrix, delimiter=',')
 
-    csv_file = open('./data/customers_map.csv', 'w')
-    writer = csv.writer(csv_file)
-    for key, value in customers_map.items():
-        writer.writerow([key, value])
+        json_file = open('./data/customers_map.json', 'w')
+        json.dump(customers_map, json_file)
 
-    csv_file = open('./data/products_map.csv', 'w')
-    writer = csv.writer(csv_file)
-    for key, value in products_map.items():
-        writer.writerow([key, value])
+        json_file = open('./data/products_map.json', 'w')
+        json.dump(products_map, json_file)
 
 
 if __name__ == '__main__':
