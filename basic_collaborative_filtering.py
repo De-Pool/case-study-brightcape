@@ -6,29 +6,42 @@ import matplotlib.pyplot as plt
 import openpyxl
 import csv
 import json
+from scipy import spatial
 
 
+# The idea of this method is to solve the challenge by reducing it
+# to an instance of a collaborative filtering problem, with binary, positive only data.
+# There are multiple algorithms which can be used to do this, the most basic one will be using
+# a cosine similarity where the most-frequent item will be recommended.
+# A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
+# Another method which will be explored is Alternating Least Squares.
 def main():
     # Process data
     filename = './data/data-raw.xlsx'
-    df_raw = process_data(filename=filename, savedcsv=True)
+    df_raw = process_data(filename=filename)
 
     # Clean data
     df_clean = clean_data(df_raw)
 
-    # The matrix can be stored locally to speed up the computations
-    # When running this for the first time, set saved_matrix to False
-    saved_matrix = False
-
     # Create a customer - product matrix (n x m)
-    matrix, customers_map, products_map = create_matrix(df_clean, saved=saved_matrix)
-    # Save the intermediary result
-    save_matrix(matrix, customers_map, products_map, saved=saved_matrix)
+    matrix, customers_map, products_map = create_customer_product_matrix(df_clean)
+
+    # Create user - user similarity matrix (n x n)
+    similarity_matrix = create_similarity_matrix(matrix, len(customers_map))
+
+    # k nearest neighbours -> based on user similarity
+    k = 25
+    recommendation = predict_recommendation(matrix, similarity_matrix, len(customers_map), k)
 
 
-def process_data(filename, savedcsv):
+def process_data(filename):
     # Use .csv since it is way faster than .xslx
-    if not savedcsv:
+    try:
+        df_raw = pd.read_csv("./data/data-raw.csv", header=0, delimiter=",")
+        return df_raw
+    except:
+        print("Didn't find a converted .csv from the .xslx file, creating it...")
+    finally:
         # Load the .xslx file
         xslx_file = openpyxl.load_workbook(filename).active
         # Create csv file
@@ -36,8 +49,8 @@ def process_data(filename, savedcsv):
         # Read the excel file per row and write it to the .csv file
         for row in xslx_file.rows:
             csv_file.writerow([cell.value for cell in row])
+        df_raw = pd.read_csv("./data/data-raw.csv", header=0, delimiter=",")
 
-    df_raw = pd.read_csv("./data/data-raw.csv", header=0, delimiter=",")
     return df_raw
 
 
@@ -53,6 +66,14 @@ def clean_data(df):
     plt.tight_layout()
     plt.show()
 
+    # Filter out the cancellations.
+    # If an InvoiceNo starts with a C, it's a cancellation
+    df = df.loc[~df.InvoiceNo.str.startswith('C')]
+
+    # We only need to know whether a customer has bough a product,
+    # so we filter out all quantities of 0 or lower
+    df = df.loc[df.Quantity > 0]
+
     # We drop the observations with a missing CustomerID, as they are of no use
     df = df.dropna(axis=0, subset=["CustomerID"])
 
@@ -64,9 +85,20 @@ def clean_data(df):
     return df
 
 
-def create_matrix(df_clean, saved):
-    # If the matrix hasn't been saved locally, compute the matrix
-    if not saved:
+def create_customer_product_matrix(df_clean):
+    try:
+        matrix = genfromtxt('./data/matrix.csv', delimiter=',')
+
+        json_file = open('./data/customers_map.json')
+        customers_map = json.load(json_file)
+
+        json_file = open('./data/products_map.json')
+        products_map = json.load(json_file)
+        return matrix, customers_map, products_map
+    except:
+        print("Didn't find a save matrix, creating it...")
+    finally:
+        # If the matrix hasn't been saved locally, compute the matrix
         # Group by CustomerID and StockCode and sum over the quantity
         # (some customers have bought a product more than once)
         df_clean = df_clean.groupby(['CustomerID', 'StockCode']).agg({'Quantity': ['sum']}).reset_index()
@@ -82,7 +114,7 @@ def create_matrix(df_clean, saved):
         customers_map = dict()
         for i in range(n):
             customers_map[unique_customers[i]] = i
-
+        save_dict(customers_map, 'customers_map.json')
         products_map = dict()
         for i in range(m):
             products_map[unique_products[i]] = i
@@ -94,27 +126,56 @@ def create_matrix(df_clean, saved):
             col_index = products_map[row['StockCode'].values[0]]
             if row['Quantity'].values[0] > 0:
                 matrix[row_index][col_index] = 1
-    else:
-        matrix = genfromtxt('./data/matrix.csv', delimiter=',')
 
-        json_file = open('./data/customers_map.json', 'w')
-        customers_map = json.load(json_file)
+        save_dict(customers_map, 'customers_map.json')
+        save_dict(products_map, 'products_map.json')
+        save_matrix(matrix, 'matrix.csv')
 
-        json_file = open('./data/products_map.json', 'w')
-        products_map = json.load(json_file)
-
-    return matrix, customers_map, products_map
+        return matrix, customers_map, products_map
 
 
-def save_matrix(matrix, customers_map, products_map, saved):
-    if not saved:
-        np.savetxt('./data/matrix.csv', matrix, delimiter=',')
+def create_similarity_matrix(c_p_matrix, n):
+    try:
+        similarity_matrix = genfromtxt('./data/similarity_matrix.csv', delimiter=',')
+        return similarity_matrix
+    except:
+        print("Didn't find a similarity matrix, creating it...")
+    finally:
+        similarity_matrix = np.zeros((n, n))
 
-        json_file = open('./data/customers_map.json', 'w')
-        json.dump(customers_map, json_file)
+        # For each user, compute how similar they are to each other user.
+        for i in range(n):
+            for j in range(n):
+                # cosine similarity = 1 - cosine distance
+                similarity_matrix[i][j] = 1 - spatial.distance.cosine(c_p_matrix[i], c_p_matrix[j])
 
-        json_file = open('./data/products_map.json', 'w')
-        json.dump(products_map, json_file)
+        save_matrix(similarity_matrix, 'similarity_matrix.csv')
+
+        return similarity_matrix
+
+
+def predict_recommendation(c_p_matrix, similarity_matrix, n, k):
+    try:
+        recommendations = genfromtxt('./data/recommendations.csv', delimiter=',')
+        return recommendations
+    except:
+        print("Didn't find recommendations, creating it...")
+    finally:
+        recommendations = np.zeros((n, k))
+        for i in range(n):
+            pass
+        save_matrix(recommendations, 'recommendations.csv')
+
+        return recommendations
+
+
+def save_dict(dictionary, name):
+    json_file = open('./data/' + name, 'w')
+    json.dump(dictionary, json_file)
+
+
+def save_matrix(matrix, name):
+    np.savetxt('./data/' + name, matrix, delimiter=',')
 
 
 if __name__ == '__main__':
