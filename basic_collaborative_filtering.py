@@ -1,12 +1,12 @@
 import pandas as pd
 import numpy as np
-from numpy import genfromtxt
 import seaborn as sns
 import matplotlib.pyplot as plt
 import openpyxl
 import csv
 import json
 from scipy import spatial
+import helper_functions
 
 
 # The idea of this method is to solve the challenge by reducing it
@@ -31,7 +31,9 @@ def main():
 
     # k nearest neighbours -> based on user similarity
     k = 25
-    recommendation = predict_recommendation(matrix, similarity_matrix, len(customers_map), k)
+    # r recommendations
+    r = 10
+    recommendation = predict_recommendation(matrix, similarity_matrix, len(customers_map), k, r)
 
 
 def process_data(filename):
@@ -39,9 +41,8 @@ def process_data(filename):
     try:
         df_raw = pd.read_csv("./data/data-raw.csv", header=0, delimiter=",")
         return df_raw
-    except:
+    except IOError:
         print("Didn't find a converted .csv from the .xslx file, creating it...")
-    finally:
         # Load the .xslx file
         xslx_file = openpyxl.load_workbook(filename).active
         # Create csv file
@@ -87,7 +88,7 @@ def clean_data(df):
 
 def create_customer_product_matrix(df_clean):
     try:
-        matrix = genfromtxt('./data/matrix.csv', delimiter=',')
+        matrix = helper_functions.read_matrix('matrix.csv')
 
         json_file = open('./data/customers_map.json')
         customers_map = json.load(json_file)
@@ -95,9 +96,8 @@ def create_customer_product_matrix(df_clean):
         json_file = open('./data/products_map.json')
         products_map = json.load(json_file)
         return matrix, customers_map, products_map
-    except:
-        print("Didn't find a save matrix, creating it...")
-    finally:
+    except IOError:
+        print("Didn't find a saved matrix, creating it...")
         # If the matrix hasn't been saved locally, compute the matrix
         # Group by CustomerID and StockCode and sum over the quantity
         # (some customers have bought a product more than once)
@@ -114,7 +114,7 @@ def create_customer_product_matrix(df_clean):
         customers_map = dict()
         for i in range(n):
             customers_map[unique_customers[i]] = i
-        save_dict(customers_map, 'customers_map.json')
+        helper_functions.save_dict(customers_map, 'customers_map.json')
         products_map = dict()
         for i in range(m):
             products_map[unique_products[i]] = i
@@ -127,20 +127,19 @@ def create_customer_product_matrix(df_clean):
             if row['Quantity'].values[0] > 0:
                 matrix[row_index][col_index] = 1
 
-        save_dict(customers_map, 'customers_map.json')
-        save_dict(products_map, 'products_map.json')
-        save_matrix(matrix, 'matrix.csv')
+        helper_functions.save_dict(customers_map, 'customers_map.json')
+        helper_functions.save_dict(products_map, 'products_map.json')
+        helper_functions.save_matrix(matrix, 'matrix.csv')
 
         return matrix, customers_map, products_map
 
 
 def create_similarity_matrix(c_p_matrix, n):
     try:
-        similarity_matrix = genfromtxt('./data/similarity_matrix.csv', delimiter=',')
+        similarity_matrix = helper_functions.read_matrix('similarity_matrix.csv')
         return similarity_matrix
-    except:
+    except IOError:
         print("Didn't find a similarity matrix, creating it...")
-    finally:
         similarity_matrix = np.zeros((n, n))
 
         # For each user, compute how similar they are to each other user.
@@ -149,33 +148,30 @@ def create_similarity_matrix(c_p_matrix, n):
                 # cosine similarity = 1 - cosine distance
                 similarity_matrix[i][j] = 1 - spatial.distance.cosine(c_p_matrix[i], c_p_matrix[j])
 
-        save_matrix(similarity_matrix, 'similarity_matrix.csv')
+        helper_functions.save_matrix(similarity_matrix, 'similarity_matrix.csv')
 
         return similarity_matrix
 
 
-def predict_recommendation(c_p_matrix, similarity_matrix, n, k):
+def predict_recommendation(c_p_matrix, similarity_matrix, n, k, r):
     try:
-        recommendations = genfromtxt('./data/recommendations.csv', delimiter=',')
+        recommendations = helper_functions.read_matrix('recommendations.csv')
         return recommendations
-    except:
+    except IOError:
         print("Didn't find recommendations, creating it...")
-    finally:
-        recommendations = np.zeros((n, k))
+        recommendations = np.zeros((n, r))
+        # For each customer, find k nearest neighbours and predict r recommendations.
         for i in range(n):
-            pass
-        save_matrix(recommendations, 'recommendations.csv')
+            k_neighbours = find_k_n_n(i, similarity_matrix, k)
+
+        helper_functions.save_matrix(recommendations, 'recommendations.csv')
 
         return recommendations
 
 
-def save_dict(dictionary, name):
-    json_file = open('./data/' + name, 'w')
-    json.dump(dictionary, json_file)
-
-
-def save_matrix(matrix, name):
-    np.savetxt('./data/' + name, matrix, delimiter=',')
+def find_k_n_n(index, similarity_matrix, k):
+    nearest_neighbours = np.argsort(similarity_matrix[index])[::-1][1:k + 1]
+    return nearest_neighbours
 
 
 if __name__ == '__main__':
