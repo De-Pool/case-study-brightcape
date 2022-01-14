@@ -35,7 +35,8 @@ def main():
 
     # r recommendations
     r = 10
-    recommendation = predict_recommendation(ratings_matrix, len(customers_map), r)
+    filename = 'recommendations.csv'
+    recommendation = predict_recommendation(ratings_matrix, len(customers_map), r, filename)
 
 
 def process_data(filename):
@@ -164,27 +165,32 @@ def predict_ratings_matrix(c_p_matrix, similarity_matrix, n, m, k):
         for i in range(n):
             k_neighbours = find_k_n_n(i, similarity_matrix, k)
             for j in range(m):
-                if c_p_matrix[i][j] == 1:
-                    continue
                 ratings_matrix[i][j] = compute_score(c_p_matrix, k_neighbours, j, k)
+
+        # Set each rating to 0 for products which have already been bought.
+        non_zero = np.where(c_p_matrix > 0)
+        for i in range(len(non_zero[0])):
+            ratings_matrix[non_zero[i]][non_zero[i]] = 0
 
         hf.save_matrix(ratings_matrix, 'ratings_matrix.csv')
 
     return ratings_matrix
 
 
-def predict_recommendation(ratings_matrix, n, r):
+def predict_recommendation(ratings_matrix, n, r, filename):
     try:
-        recommendations = hf.read_matrix('recommendations.csv')
+        recommendations = hf.read_matrix(filename)
     except IOError:
         print("Didn't find recommendations, creating it...")
         recommendations = np.zeros((n, r))
         # For each customer, find k nearest neighbours and predict r recommendations.
         for i in range(n):
-            ratings = np.sort(ratings_matrix[:, i])[::-1][0:r]
-            recommendations[i] = int(np.argsort(ratings_matrix[:, i])[::-1][0:r])
-
-        hf.save_matrix(recommendations, 'recommendations.csv')
+            ratings = np.sort(ratings_matrix[:, i])[::-1]
+            if len(ratings) > r:
+                recommendations[i] = ratings[0:r]
+            else:
+                recommendations[i] = ratings[0:len(ratings)]
+        hf.save_matrix(recommendations, filename)
 
     return recommendations
 

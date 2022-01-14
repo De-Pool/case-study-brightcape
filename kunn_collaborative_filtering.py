@@ -20,16 +20,21 @@ def main():
 
     # Create a customer - product matrix (n x m)
     matrix, customers_map, products_map = cf.create_customer_product_matrix(df_clean)
-
     n = len(customers_map)
     m = len(products_map)
-    # Create customer - customer similarity matrix (n x n) and a product - product similarity matrix (m x m)
-    similarity_matrix_customers, similarity_matrix_products = create_similarity_matrices(matrix, n, m)
 
-    k_customer = 25
-    k_product = 25
-    ratings_matrix = predict_ratings_matrix(matrix, similarity_matrix_customers, similarity_matrix_products, n, m,
-                                            k_customer, k_product)
+    # Create customer - customer similarity matrix (n x n) and a product - product similarity matrix (m x m)
+    s_matrix_c, s_matrix_p = create_similarity_matrices(matrix, n, m)
+
+    # Create ratings matrix, with k_c nearest customers and k_p nearest products
+    k_c = 25
+    k_p = 25
+    ratings_matrix = predict_ratings_matrix(matrix, s_matrix_c, s_matrix_p, n, m, k_c, k_p)
+
+    # Get r recommendations
+    filename = '/kunn_cf/recommendations.csv'
+    r = 10
+    recommendations = cf.predict_recommendation(ratings_matrix, n, r, filename)
 
 
 def create_similarity_matrices(c_p_matrix, n, m):
@@ -108,6 +113,10 @@ def predict_ratings_matrix(c_p_matrix, similarity_matrix_c, similarity_matrix_p,
                 k_neighbours_product = find_k_n_n_product(j, similarity_matrix_p, k_p)
                 c_p_matrix[i][j] = compute_score(i, j, c_p_matrix, k_neighbours_customer, k_neighbours_product,
                                                  c_products, c_customers)
+        # Set each rating to 0 for products which have already been bought.
+        non_zero = np.where(c_p_matrix > 0)
+        for i in range(len(non_zero[0])):
+            ratings_matrix[non_zero[i]][non_zero[i]] = 0
 
         hf.save_matrix(ratings_matrix, 'ratings_matrix.csv')
 
