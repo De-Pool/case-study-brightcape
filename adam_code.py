@@ -1,13 +1,11 @@
-import pandas as pd
-import numpy as np
-from numpy import genfromtxt
-import seaborn as sns
-import matplotlib.pyplot as plt
-import openpyxl
 import csv
-import json
-from scipy import spatial
-import collections
+
+import matplotlib.pyplot as plt
+import numpy as np
+import openpyxl
+import pandas as pd
+import seaborn as sns
+
 
 def main():
     # Process data
