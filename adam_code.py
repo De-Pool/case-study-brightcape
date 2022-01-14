@@ -19,16 +19,12 @@ def main():
     
     # add variables 
     df_with_price = add_columns(df_clean)
-    #print(df_with_price[1200:1250])
     
-
-
-
     # collapse data
     df_collapsed = collapse_df(df_with_price)
     print(df_collapsed.describe())
     
-
+    # check if no bugs in collapsing 
     print('')
     for index in range(df_collapsed.shape[0]):
         if df_collapsed.loc[index, 'Price'] < 1:
@@ -36,9 +32,12 @@ def main():
             print(df_collapsed.loc[index, 'CustomerID'])
 
     print('')
-    df_maybe = money_distribution(df_collapsed, False)
-    print(df_maybe)
+    
+    df_user_final = money_distribution(df_collapsed, False)
+    del df_user_final['Price']
+    print(df_user_final)
 
+    
 
 def process_data(filename):
     # Use .csv since it is way faster than .xslx
@@ -69,8 +68,8 @@ def clean_data(df, plot):
         ax = sns.heatmap(df[df.columns].isnull())
         ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=8)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=8, rotation_mode='anchor', ha='right')
-        #plt.tight_layout()
-        #plt.show()
+        plt.tight_layout()
+        plt.show()
 
     # Filter out the cancellations.
     # If an InvoiceNo starts with a C, it's a cancellation
@@ -98,24 +97,28 @@ def clean_data(df, plot):
     return df
 
 def add_columns(df):
-
+    # adding Quantity * UnitPrice for new price column
     df['Price'] = df['Quantity'] * df['UnitPrice']
 
-    print(df['Country'].value_counts())
     
     codes, uniques = pd.factorize(df['Country'])
-    print(len(codes))
     df['CountryCode'] = codes
 
     print('hier')
     df['WorkingHours'] = ''
-    for _, row in df.iterrows():
-        if int(row['InvoiceDate'][-8:-6]) <= 17 and int(row['InvoiceDate'][-8:-6]) >= 9:
-            df['WorkingHours'] = 1
-        else:
-            df['WorkingHours'] = 0
+    # for index, row in df.iterrows():
+    #     if int(row['InvoiceDate'][-8:-6]) <= 17 and int(row['InvoiceDate'][-8:-6]) >= 9:
+    #         df['WorkingHours'][index] = 1
+    #     else:
+    #         df['WorkingHours'][index] = 0
+    #     if index % 10000 == 0:
+    #         print(index)
+    df.loc[(df.InvoiceDate.str[-8:-6].astype(int) > 17)
+           | (df.InvoiceDate.str[-8:-6].astype(int) < 9), 'WorkingHours'] = 0
+    df.loc[(df.InvoiceDate.str[-8:-6].astype(int) <= 17)
+           & (df.InvoiceDate.str[-8:-6].astype(int) >= 9), 'WorkingHours'] = 1
 
-    print(df[100:130])
+    print(df['WorkingHours'].value_counts())
    
     return df
 
