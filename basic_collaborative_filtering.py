@@ -6,13 +6,13 @@ import openpyxl
 import csv
 import json
 from scipy import spatial
-import helper_functions
+import helper_functions as hf
 
 
 # The idea of this method is to solve the challenge by reducing it
 # to an instance of a collaborative filtering problem, with binary, positive only data.
 # There are multiple algorithms which can be used to do this, the most basic one will be using
-# a cosine similarity where the most-frequent item will be recommended.
+# a cosine similarity where the most-frequent product will be recommended.
 # A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
 # Another method which will be explored is Alternating Least Squares.
 def main():
@@ -26,21 +26,22 @@ def main():
     # Create a customer - product matrix (n x m)
     matrix, customers_map, products_map = create_customer_product_matrix(df_clean)
 
-    # Create user - user similarity matrix (n x n)
+    # Create customer - customer similarity matrix (n x n)
     similarity_matrix = create_similarity_matrix(matrix, len(customers_map))
 
-    # k nearest neighbours -> based on user similarity
+    # k nearest neighbours -> based on customer similarity
     k = 25
+    ratings_matrix = predict_ratings_matrix(matrix, similarity_matrix, len(customers_map), len(products_map), k)
+
     # r recommendations
     r = 10
-    recommendation = predict_recommendation(matrix, similarity_matrix, len(customers_map), k, r)
+    recommendation = predict_recommendation(ratings_matrix, len(customers_map), r)
 
 
 def process_data(filename):
     # Use .csv since it is way faster than .xslx
     try:
         df_raw = pd.read_csv("./data/data-raw.csv", header=0, delimiter=",")
-        return df_raw
     except IOError:
         print("Didn't find a converted .csv from the .xslx file, creating it...")
         # Load the .xslx file
@@ -55,17 +56,18 @@ def process_data(filename):
     return df_raw
 
 
-def clean_data(df):
-    # Inspect missing data
-    for col in df.columns:
-        print('{} - {}%'.format(col, round(np.mean(df[col].isnull()) * 100)))
+def clean_data(df, plot):
+    if plot:
+        # Inspect missing data
+        for col in df.columns:
+            print('{} - {}%'.format(col, round(np.mean(df[col].isnull()) * 100)))
 
-    # Visualize it with a plot
-    ax = sns.heatmap(df[df.columns].isnull())
-    ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=8)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=8, rotation_mode='anchor', ha='right')
-    plt.tight_layout()
-    plt.show()
+        # Visualize it with a plot
+        ax = sns.heatmap(df[df.columns].isnull())
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=8)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=8, rotation_mode='anchor', ha='right')
+        plt.tight_layout()
+        plt.show()
 
     # Filter out the cancellations.
     # If an InvoiceNo starts with a C, it's a cancellation
@@ -74,6 +76,13 @@ def clean_data(df):
     # We only need to know whether a customer has bough a product,
     # so we filter out all quantities of 0 or lower
     df = df.loc[df.Quantity > 0]
+
+    # We only want products with a positive price.
+    df = df.loc[df.UnitPrice > 0]
+
+    # Filter out the following Stock Codes, since they're useless
+    stockcodes = ['S', 'POST', 'M', 'DOT', 'D', 'CRUK', 'C2', 'BANK CHARGES']
+    df = df.loc[~df.StockCode.isin(stockcodes)]
 
     # We drop the observations with a missing CustomerID, as they are of no use
     df = df.dropna(axis=0, subset=["CustomerID"])
@@ -88,14 +97,9 @@ def clean_data(df):
 
 def create_customer_product_matrix(df_clean):
     try:
-        matrix = helper_functions.read_matrix('matrix.csv')
-
-        json_file = open('./data/customers_map.json')
-        customers_map = json.load(json_file)
-
-        json_file = open('./data/products_map.json')
-        products_map = json.load(json_file)
-        return matrix, customers_map, products_map
+        matrix = hf.read_matrix('matrix.csv')
+        customers_map = json.load(open('./data/customers_map.json'))
+        products_map = json.load(open('./data/products_map.json'))
     except IOError:
         print("Didn't find a saved matrix, creating it...")
         # If the matrix hasn't been saved locally, compute the matrix
@@ -114,7 +118,7 @@ def create_customer_product_matrix(df_clean):
         customers_map = dict()
         for i in range(n):
             customers_map[unique_customers[i]] = i
-        helper_functions.save_dict(customers_map, 'customers_map.json')
+        hf.save_dict(customers_map, 'customers_map.json')
         products_map = dict()
         for i in range(m):
             products_map[unique_products[i]] = i
@@ -124,54 +128,78 @@ def create_customer_product_matrix(df_clean):
         for _, row in df_clean.iterrows():
             row_index = customers_map[row['CustomerID'].values[0]]
             col_index = products_map[row['StockCode'].values[0]]
-            if row['Quantity'].values[0] > 0:
-                matrix[row_index][col_index] = 1
+            matrix[row_index][col_index] = 1
 
-        helper_functions.save_dict(customers_map, 'customers_map.json')
-        helper_functions.save_dict(products_map, 'products_map.json')
-        helper_functions.save_matrix(matrix, 'matrix.csv')
+        hf.save_dict(customers_map, 'customers_map.json')
+        hf.save_dict(products_map, 'products_map.json')
+        hf.save_matrix(matrix, 'matrix.csv')
 
-        return matrix, customers_map, products_map
+    return matrix, customers_map, products_map
 
 
 def create_similarity_matrix(c_p_matrix, n):
     try:
-        similarity_matrix = helper_functions.read_matrix('similarity_matrix.csv')
-        return similarity_matrix
+        similarity_matrix = hf.read_matrix('similarity_matrix.csv')
     except IOError:
         print("Didn't find a similarity matrix, creating it...")
         similarity_matrix = np.zeros((n, n))
 
-        # For each user, compute how similar they are to each other user.
+        # For each customer, compute how similar they are to each other customer.
         for i in range(n):
             for j in range(n):
                 # cosine similarity = 1 - cosine distance
                 similarity_matrix[i][j] = 1 - spatial.distance.cosine(c_p_matrix[i], c_p_matrix[j])
 
-        helper_functions.save_matrix(similarity_matrix, 'similarity_matrix.csv')
+        hf.save_matrix(similarity_matrix, 'similarity_matrix.csv')
 
-        return similarity_matrix
+    return similarity_matrix
 
 
-def predict_recommendation(c_p_matrix, similarity_matrix, n, k, r):
+def predict_ratings_matrix(c_p_matrix, similarity_matrix, n, m, k):
     try:
-        recommendations = helper_functions.read_matrix('recommendations.csv')
-        return recommendations
+        ratings_matrix = hf.read_matrix('ratings_matrix.csv')
+    except IOError:
+        print("Didn't find ratings, creating it...")
+        ratings_matrix = np.zeros((n, m))
+        for i in range(n):
+            k_neighbours = find_k_n_n(i, similarity_matrix, k)
+            for j in range(m):
+                if c_p_matrix[i][j] == 1:
+                    continue
+                ratings_matrix[i][j] = compute_score(c_p_matrix, k_neighbours, j, k)
+
+        hf.save_matrix(ratings_matrix, 'ratings_matrix.csv')
+
+    return ratings_matrix
+
+
+def predict_recommendation(ratings_matrix, n, r):
+    try:
+        recommendations = hf.read_matrix('recommendations.csv')
     except IOError:
         print("Didn't find recommendations, creating it...")
         recommendations = np.zeros((n, r))
         # For each customer, find k nearest neighbours and predict r recommendations.
         for i in range(n):
-            k_neighbours = find_k_n_n(i, similarity_matrix, k)
+            ratings = np.sort(ratings_matrix[:, i])[::-1][0:r]
+            recommendations[i] = int(np.argsort(ratings_matrix[:, i])[::-1][0:r])
 
-        helper_functions.save_matrix(recommendations, 'recommendations.csv')
+        hf.save_matrix(recommendations, 'recommendations.csv')
 
-        return recommendations
+    return recommendations
 
 
 def find_k_n_n(index, similarity_matrix, k):
     nearest_neighbours = np.argsort(similarity_matrix[index])[::-1][1:k + 1]
     return nearest_neighbours
+
+
+def compute_score(c_p_matrix, neighbours, product, k):
+    total = 0
+    for n in neighbours:
+        total += c_p_matrix[n][product]
+
+    return total / k
 
 
 if __name__ == '__main__':
