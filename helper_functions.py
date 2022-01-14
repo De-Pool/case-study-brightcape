@@ -1,6 +1,7 @@
-import json
-import numpy as np
 import csv
+import json
+
+import numpy as np
 
 
 def save_dict(dictionary, name):
@@ -15,7 +16,7 @@ def save_matrix(matrix, name):
 def read_matrix(name):
     # Don't use np.gentxt, since it is not optimized.
     file = open('./data/' + name)
-    dialect = csv.Sniffer().sniff(file.read(1024))
+    dialect = csv.Sniffer().sniff(file.read(4048))
     file.seek(0)
     reader = csv.reader(file, dialect)
     data = []

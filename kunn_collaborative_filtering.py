@@ -1,7 +1,11 @@
-import numpy as np
-import helper_functions as hf
-import basic_collaborative_filtering as cf
 from math import sqrt
+
+import numpy as np
+
+import basic_collaborative_filtering as bcf
+import helper_functions as hf
+import pre_process_data as ppd
+import split_data as split
 
 
 # The idea of this method is to solve the challenge by reducing it
@@ -13,28 +17,32 @@ from math import sqrt
 def main():
     # Process data
     filename = './data/data-raw.xlsx'
-    df_raw = cf.process_data(filename=filename)
+    df_raw = ppd.process_data(filename=filename)
 
     # Clean data
-    df_clean = cf.clean_data(df_raw, plot=False)
+    df_clean = ppd.clean_data(df_raw, plot=False)
 
     # Create a customer - product matrix (n x m)
-    matrix, customers_map, products_map = cf.create_customer_product_matrix(df_clean)
+    matrix, customers_map, products_map = ppd.create_customer_product_matrix(df_clean)
     n = len(customers_map)
     m = len(products_map)
 
+    # Split the utility matrix into train and test data
+    train_matrix, test_data = split.leave_one_out(matrix, n)
+
     # Create customer - customer similarity matrix (n x n) and a product - product similarity matrix (m x m)
-    s_matrix_c, s_matrix_p = create_similarity_matrices(matrix, n, m)
+    s_matrix_c, s_matrix_p = create_similarity_matrices(train_matrix, n, m)
 
     # Create ratings matrix, with k_c nearest customers and k_p nearest products
+    save = True
     k_c = 25
     k_p = 25
-    ratings_matrix = predict_ratings_matrix(matrix, s_matrix_c, s_matrix_p, n, m, k_c, k_p)
+    ratings_matrix = predict_ratings_matrix(train_matrix, s_matrix_c, s_matrix_p, n, m, k_c, k_p, save)
 
     # Get r recommendations
     filename = '/kunn_cf/recommendations.csv'
     r = 10
-    recommendations = cf.predict_recommendation(ratings_matrix, n, r, filename)
+    recommendations = bcf.predict_recommendation(ratings_matrix, n, r, filename, save)
 
 
 def create_similarity_matrices(c_p_matrix, n, m):
@@ -97,7 +105,7 @@ def product_similarity(i, j, c_p_matrix, c_customers, c_products):
         return similarity
 
 
-def predict_ratings_matrix(c_p_matrix, similarity_matrix_c, similarity_matrix_p, n, m, k_c, k_p):
+def predict_ratings_matrix(c_p_matrix, similarity_matrix_c, similarity_matrix_p, n, m, k_c, k_p, save):
     try:
         ratings_matrix = hf.read_matrix('kunn_cf/ratings_matrix.csv')
     except IOError:
@@ -111,33 +119,45 @@ def predict_ratings_matrix(c_p_matrix, similarity_matrix_c, similarity_matrix_p,
             k_neighbours_customer = find_k_n_n_customer(i, similarity_matrix_c, k_c)
             for j in range(m):
                 k_neighbours_product = find_k_n_n_product(j, similarity_matrix_p, k_p)
-                c_p_matrix[i][j] = compute_score(i, j, c_p_matrix, k_neighbours_customer, k_neighbours_product,
-                                                 c_products, c_customers)
+                ratings_matrix[i][j] = compute_score(i, j, c_p_matrix, k_neighbours_customer, k_neighbours_product,
+                                                     c_products, c_customers)
         # Set each rating to 0 for products which have already been bought.
         non_zero = np.where(c_p_matrix > 0)
         for i in range(len(non_zero[0])):
             ratings_matrix[non_zero[i]][non_zero[i]] = 0
 
-        hf.save_matrix(ratings_matrix, 'ratings_matrix.csv')
+        if save:
+            hf.save_matrix(ratings_matrix, 'ratings_matrix.csv')
 
     return ratings_matrix
 
 
 def compute_score(i, j, c_p_matrix, knn_customer, knn_product, c_products, c_customers):
-    # Get score which user u will give to item i
+    # Get score which user i will give to item j
+    score_customer = compute_score_customer(j, knn_customer, c_p_matrix, c_products)
+    score_product = compute_score_product(i, knn_product, c_p_matrix, c_customers)
+    return score_product + score_customer
+
+
+def compute_score_customer(j, knn_customer, c_p_matrix, c_products):
+    if c_products[j] == 0:
+        return 0
     total = 0
     for user, sim in zip(knn_customer[0], knn_customer[1]):
         if c_p_matrix[user, j] > 0:
             total += sim
-    score_customer = total / sqrt(c_products[j])
 
+    return total / sqrt(c_products[j])
+
+
+def compute_score_product(i, knn_product, c_p_matrix, c_customers):
+    if c_customers[i] == 0:
+        return 0
     total = 0
     for product, sim in zip(knn_product[0], knn_product[1]):
         if c_p_matrix[i, product] > 0:
             total += sim
-    score_product = total / sqrt(c_customers[i])
-
-    return score_product + score_customer
+    return total / sqrt(c_customers[i])
 
 
 def find_k_n_n_customer(i, similarity_matrix, k):
