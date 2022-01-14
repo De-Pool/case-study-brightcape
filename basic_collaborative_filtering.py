@@ -21,7 +21,7 @@ def main():
     df_raw = process_data(filename=filename)
 
     # Clean data
-    df_clean = clean_data(df_raw)
+    df_clean = clean_data(df_raw, False)
 
     # Create a customer - product matrix (n x m)
     matrix, customers_map, products_map = create_customer_product_matrix(df_clean)

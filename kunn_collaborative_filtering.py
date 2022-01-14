@@ -1,8 +1,6 @@
 import numpy as np
 import helper_functions as hf
 import basic_collaborative_filtering as cf
-import kunn_collaborative_filtering_lib as kunn
-import kunn_fast
 from math import sqrt
 
 
@@ -12,8 +10,6 @@ from math import sqrt
 # a cosine similarity where the most-frequent product will be recommended.
 # A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
 # Another method which will be explored is Alternating Least Squares.
-
-
 def main():
     # Process data
     filename = './data/data-raw.xlsx'
