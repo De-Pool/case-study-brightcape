@@ -13,6 +13,7 @@ def save_matrix(matrix, name):
 
 
 def read_matrix(name):
+    # Don't use np.gentxt, since it is not optimized.
     file = open('./data/' + name)
     dialect = csv.Sniffer().sniff(file.read(1024))
     file.seek(0)
