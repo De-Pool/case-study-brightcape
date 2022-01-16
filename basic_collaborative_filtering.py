@@ -3,85 +3,91 @@ from scipy import spatial
 
 import helper_functions as hf
 import pre_process_data as ppd
+import similarity_meta_data as smd
 import split_data as split
 
 
-# The idea of this method is to solve the challenge by reducing it
-# to an instance of a collaborative filtering problem, with binary, positive only data.
-# There are multiple algorithms which can be used to do this, the most basic one will be using
-# a cosine similarity where the most-frequent product will be recommended.
-# A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
-# Another method which will be explored is Alternating Least Squares.
-def main():
-    # Process data
-    filename = './data/data-raw.xlsx'
-    df_raw = ppd.process_data(filename=filename)
+class CollaborativeFilteringBasic(object):
+    def __init__(self, filename, split_method, k, plot):
+        self.k = k
 
-    # Clean data
-    df_clean = ppd.clean_data(df_raw, False)
+        df_raw = ppd.process_data(filename=filename)
+        self.df_clean = ppd.clean_data(df_raw, plot=plot)
 
-    # Create a customer - product matrix (n x m)
-    matrix, customers_map, products_map = ppd.create_customer_product_matrix(df_clean)
-    n = len(customers_map)
-    m = len(products_map)
+        # Create a customer - product matrix (n x m)
+        self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
+        self.n = len(self.customers_map)
+        self.m = len(self.products_map)
 
-    # Split the utility matrix into train and test data
-    train_matrix, test_data = split.leave_one_out(matrix, n)
-    train_matrix, test_data = split.leave_last_out(matrix,
-                                                   split.get_indices_last(df_clean, customers_map, products_map), n)
+        # Split the utility matrix into train and test data
+        if split_method == 'one_out':
+            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
+        elif split_method == 'last_out':
+            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
+                                                                     self.products_map)
+        else:
+            self.train_matrix, self.test_data = self.matrix, []
 
-    # Create customer - customer similarity matrix (n x n)
-    similarity_matrix = create_similarity_matrix(train_matrix, n)
+        # Create customer - customer meta data similarity matrix (n x n)
+        self.smd_matrix = smd.meta_data_similarity_matrix(self.df_clean, self.customers_map, self.n)
 
-    # k nearest neighbours -> based on customer similarity
-    save = True
-    k = 25
-    ratings_matrix = predict_ratings_matrix(matrix, similarity_matrix, n, m, k, save)
+        self.similarity_matrix = None
+        self.ratings_matrix = None
 
-    # r recommendations
-    r = 10
-    filename = 'recommendations.csv'
-    recommendations = predict_recommendation(ratings_matrix, len(customers_map), r, filename, save)
+    def create_similarity_matrix(self):
+        try:
+            self.similarity_matrix = hf.read_matrix('basic_cf/similarity_matrix.csv')
+        except IOError:
+            print("Didn't find a similarity matrix, creating it...")
+            self.similarity_matrix = np.zeros((self.n, self.n))
 
+            # For each customer, compute how similar they are to each other customer.
+            for i in range(self.n):
+                for j in range(self.n):
+                    # cosine similarity = 1 - cosine distance
+                    self.similarity_matrix[i][j] = 1 - spatial.distance.cosine(self.train_matrix[i],
+                                                                               self.train_matrix[j])
 
-def create_similarity_matrix(c_p_matrix, n):
-    try:
-        similarity_matrix = hf.read_matrix('similarity_matrix.csv')
-    except IOError:
-        print("Didn't find a similarity matrix, creating it...")
-        similarity_matrix = np.zeros((n, n))
+            hf.save_matrix(self.similarity_matrix, 'basic_cf/similarity_matrix.csv')
 
-        # For each customer, compute how similar they are to each other customer.
-        for i in range(n):
-            for j in range(n):
-                # cosine similarity = 1 - cosine distance
-                similarity_matrix[i][j] = 1 - spatial.distance.cosine(c_p_matrix[i], c_p_matrix[j])
+    def predict_ratings_matrix(self, save):
+        try:
+            self.ratings_matrix = hf.read_matrix('basic_cf/ratings_matrix.csv')
+        except IOError:
+            if self.similarity_matrix is None:
+                self.create_similarity_matrix()
+            print("Didn't find ratings, creating it...")
+            self.ratings_matrix = np.zeros((self.n, self.m))
+            for i in range(self.n):
+                k_neighbours = self.find_k_n_n(i)
+                for j in range(self.m):
+                    self.ratings_matrix[i][j] = self.compute_score(k_neighbours, j)
 
-        hf.save_matrix(similarity_matrix, 'similarity_matrix.csv')
+            # Set each rating to 0 for products which have already been bought.
+            non_zero = np.where(self.matrix > 0)
+            for i in range(len(non_zero[0])):
+                self.ratings_matrix[non_zero[i]][non_zero[i]] = 0
 
-    return similarity_matrix
+            if save:
+                hf.save_matrix(self.ratings_matrix, 'basic_cf/ratings_matrix.csv')
 
+    def find_k_n_n(self, index):
+        nearest_neighbours = np.argsort(self.similarity_matrix[index])[::-1]
+        if len(nearest_neighbours) > self.k:
+            return nearest_neighbours[1:self.k + 1]
+        else:
+            return nearest_neighbours[1:]
 
-def predict_ratings_matrix(c_p_matrix, similarity_matrix, n, m, k, save):
-    try:
-        ratings_matrix = hf.read_matrix('ratings_matrix.csv')
-    except IOError:
-        print("Didn't find ratings, creating it...")
-        ratings_matrix = np.zeros((n, m))
-        for i in range(n):
-            k_neighbours = find_k_n_n(i, similarity_matrix, k)
-            for j in range(m):
-                ratings_matrix[i][j] = compute_score(c_p_matrix, k_neighbours, j, k)
+    def compute_score(self, neighbours, product):
+        total = 0
+        for n in neighbours:
+            total += self.train_matrix[n][product]
 
-        # Set each rating to 0 for products which have already been bought.
-        non_zero = np.where(c_p_matrix > 0)
-        for i in range(len(non_zero[0])):
-            ratings_matrix[non_zero[i]][non_zero[i]] = 0
+        return total / self.k
 
-        if save:
-            hf.save_matrix(ratings_matrix, 'ratings_matrix.csv')
-
-    return ratings_matrix
+    def predict_rating(self, i, j):
+        k_neighbours = self.find_k_n_n(i)
+        return self.compute_score(k_neighbours, j)
 
 
 def predict_recommendation(ratings_matrix, n, r, filename, save):
@@ -103,20 +109,27 @@ def predict_recommendation(ratings_matrix, n, r, filename, save):
     return recommendations
 
 
-def find_k_n_n(index, similarity_matrix, k):
-    nearest_neighbours = np.argsort(similarity_matrix[index])[::-1]
-    if len(nearest_neighbours) > k:
-        return nearest_neighbours[1:k + 1]
-    else:
-        return nearest_neighbours[1:]
+# The idea of this method is to solve the challenge by reducing it
+# to an instance of a collaborative filtering problem, with binary, positive only data.
+# There are multiple algorithms which can be used to do this, the most basic one will be using
+# a cosine similarity where the most-frequent product will be recommended.
+# A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
+# Another method which will be explored is Alternating Least Squares.
+def main():
+    # Process data
+    filename_xslx = './data/data-raw.xlsx'
+    filename_recommendations = 'recommendations.csv'
+    # k nearest neighbours -> based on customer similarity
+    save = True
+    k = 25
+    # r recommendations
+    r = 10
 
+    cf_knn = CollaborativeFilteringBasic(filename_xslx, 'last_out', k, False)
+    cf_knn.create_similarity_matrix()
+    cf_knn.predict_ratings_matrix(False)
 
-def compute_score(c_p_matrix, neighbours, product, k):
-    total = 0
-    for n in neighbours:
-        total += c_p_matrix[n][product]
-
-    return total / k
+    recommendations = predict_recommendation(cf_knn.ratings_matrix, cf_knn.n, r, filename_recommendations, save)
 
 
 if __name__ == '__main__':

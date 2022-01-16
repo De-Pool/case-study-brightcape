@@ -62,9 +62,9 @@ def clean_data(df, plot):
     # Drop all customerID's with only 1 ID (they will appear only once in our dataset)
     df = df[df.duplicated(subset=["CustomerID"], keep=False)]
 
-    # We don't need: InvoiceNo, InvoiceDate, Description, UnitPrice, Country
+    # We don't need: InvoiceNo, Description
     # these might be useful in more complex models
-    drop = ["InvoiceNo", "Description", "UnitPrice", "Country"]
+    drop = ["InvoiceNo", "Description"]
     df.drop(drop, inplace=True, axis=1)
 
     return df
@@ -93,7 +93,7 @@ def create_customer_product_matrix(df_clean):
         customers_map = dict()
         for i in range(n):
             customers_map[unique_customers[i]] = i
-        hf.save_dict(customers_map, 'customers_map.json')
+
         products_map = dict()
         for i in range(m):
             products_map[unique_products[i]] = i
