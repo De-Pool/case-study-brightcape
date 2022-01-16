@@ -1,5 +1,6 @@
 import numpy as np
-from scipy import spatial
+from scipy import sparse
+from sklearn.metrics.pairwise import cosine_similarity
 
 import helper_functions as hf
 import pre_process_data as ppd
@@ -39,15 +40,9 @@ class CollaborativeFilteringBasic(object):
             self.similarity_matrix = hf.read_matrix('basic_cf/similarity_matrix.csv')
         except IOError:
             print("Didn't find a similarity matrix, creating it...")
-            self.similarity_matrix = np.zeros((self.n, self.n))
 
             # For each customer, compute how similar they are to each other customer.
-            for i in range(self.n):
-                for j in range(self.n):
-                    # cosine similarity = 1 - cosine distance
-                    self.similarity_matrix[i][j] = 1 - spatial.distance.cosine(self.train_matrix[i],
-                                                                               self.train_matrix[j])
-
+            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.matrix))
             hf.save_matrix(self.similarity_matrix, 'basic_cf/similarity_matrix.csv')
 
     def predict_ratings_matrix(self, save):
@@ -126,7 +121,6 @@ def main():
     r = 10
 
     cf_knn = CollaborativeFilteringBasic(filename_xslx, 'last_out', k, False)
-    cf_knn.create_similarity_matrix()
     cf_knn.predict_ratings_matrix(False)
 
     recommendations = predict_recommendation(cf_knn.ratings_matrix, cf_knn.n, r, filename_recommendations, save)

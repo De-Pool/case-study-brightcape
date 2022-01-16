@@ -187,8 +187,7 @@ def main():
     b_kunn = CollaborativeFilteringKUNN(filename_xlsx, 'last_out', k_p, k_c, False)
 
     # Create customer - customer similarity matrix (n x n) and a product - product similarity matrix (m x m)
-    b_kunn.create_similarity_matrices()
-    b_kunn.predict_ratings_matrix(False)
+    b_kunn.predict_ratings_matrix(save=False)
 
     recommendations = bcf.predict_recommendation(b_kunn.ratings_matrix, b_kunn.n, r, filename_recommendations, save)
 
