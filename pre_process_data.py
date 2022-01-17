@@ -2,6 +2,7 @@ import csv
 import json
 
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 import config
 
@@ -98,17 +99,18 @@ def create_customer_product_matrix(df_clean):
         # (map the CustomerID and StockCode to an index, ranging from (0, n) and (0, m)
         customers_map = dict()
         for i in range(n):
-            customers_map[unique_customers[i]] = i
+            customers_map[str(unique_customers[i])] = i
 
         products_map = dict()
         for i in range(m):
-            products_map[unique_products[i]] = i
+            products_map[str(unique_products[i])] = i
 
         # Create a n x m matrix
         matrix = np.zeros((n, m))
-        for _, row in df_clean.iterrows():
-            row_index = customers_map[row['CustomerID'].values[0]]
-            col_index = products_map[row['StockCode'].values[0]]
+
+        for row in tqdm(df_clean.values):
+            row_index = customers_map[str(row[0])]
+            col_index = products_map[row[1]]
             matrix[row_index][col_index] = 1
 
         hf.save_dict(customers_map, 'customers_map.json')

@@ -38,8 +38,11 @@ class CollaborativeFilteringKUNN(object):
         # Create customer - customer meta data similarity matrix (n x n)
         self.smd_matrix = smd.meta_data_similarity_matrix(self.df_clean, self.customers_map, self.n)
 
-        self.c_products = None
-        self.c_customers = None
+        # c(x) is a function, which returns the count of x, wrt the rating
+        # So given product p, c(p) will return the count of how much customers prefer product p
+        self.c_products = self.train_matrix.sum(axis=0)
+        self.c_customers = self.train_matrix.sum(axis=1)
+
         self.similarity_matrix_products = None
         self.similarity_matrix_customers = None
         self.ratings_matrix = None
@@ -54,11 +57,6 @@ class CollaborativeFilteringKUNN(object):
             # Create 2 similarity matrices, for both products and customers
             self.similarity_matrix_products = np.zeros((self.m, self.m))
             self.similarity_matrix_customers = np.zeros((self.m, self.m))
-
-            # c(x) is a function, which returns the count of x, wrt the rating
-            # So given product p, c(p) will return the count of how much customers prefer product p
-            self.c_products = self.train_matrix.sum(axis=0)
-            self.c_customers = self.train_matrix.sum(axis=1)
 
             # For each customer, compute how similar they are to each other customer.
             for i in range(self.n):
@@ -77,8 +75,7 @@ class CollaborativeFilteringKUNN(object):
         try:
             self.ratings_matrix = hf.read_matrix('kunn_cf/ratings_matrix.csv')
         except IOError:
-            if self.c_products is None or self.c_customers is None \
-                    or self.similarity_matrix_products is None or self.similarity_matrix_customers is None:
+            if self.similarity_matrix_products is None or self.similarity_matrix_customers is None:
                 self.create_similarity_matrices()
 
             print("Didn't find ratings, creating it...")

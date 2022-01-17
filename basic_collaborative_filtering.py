@@ -1,19 +1,17 @@
-import random
-
 import config
 
 if config.use_cupy:
     import cupy as np
-    from cupyx.scipy import sparse
 else:
     import numpy as np
-    from scipy import sparse
+from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
 import helper_functions as hf
 import pre_process_data as ppd
 import similarity_meta_data as smd
 import split_data as split
+import time
 
 
 class CollaborativeFilteringBasic(object):
@@ -50,7 +48,10 @@ class CollaborativeFilteringBasic(object):
             print("Didn't find a similarity matrix, creating it...")
 
             # For each customer, compute how similar they are to each other customer.
-            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.matrix))
+            if config.use_cupy:
+                self.similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(self.matrix)))
+            else:
+                self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.matrix))
             hf.save_matrix(self.similarity_matrix, 'basic_cf/similarity_matrix.csv')
 
     def predict_ratings_matrix(self, save):
@@ -94,11 +95,11 @@ class CollaborativeFilteringBasic(object):
 
     def test_model(self, measure):
         if measure == 'simple':
-            for j in range(1000):
-                s1 = 0
-                for i in range(len(self.test_data)):
-                    s1 += self.predict_rating(i, random.randint(0, self.m - 1))
-                print(s1 / len(self.test_data))
+            # for j in range(1000):
+            #     s1 = 0
+            #     for i in range(len(self.test_data)):
+            #         s1 += self.predict_rating(i, random.randint(0, self.m - 1))
+            #     print(s1 / len(self.test_data))
             s = 0
             for i in range(len(self.test_data)):
                 s += self.predict_rating(i, int(self.test_data[i]))
@@ -140,9 +141,15 @@ def main():
     # r recommendations
     r = 10
 
+    start = time.time()
+
     cf_knn = CollaborativeFilteringBasic(filename_xslx, 'last_out', k, False)
     cf_knn.create_similarity_matrix()
     s = cf_knn.test_model('simple')
+
+    end = time.time()
+
+    print(end - start)
     print(s)
     # recommendations = predict_recommendation(cf_knn.ratings_matrix, cf_knn.n, r, filename_recommendations, save)
 

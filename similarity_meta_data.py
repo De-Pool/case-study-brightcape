@@ -4,8 +4,9 @@ if config.use_cupy:
     import cupy as np
 else:
     import numpy as np
+from scipy import sparse
+from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
-from scipy import spatial
 
 import helper_functions as hf
 
@@ -18,19 +19,17 @@ def meta_data_similarity_matrix(df, customers_map, n):
         df = similarity_meta_data(df)
         # Create a n x m matrix
         matrix = np.zeros((n, 3))
-        for _, row in df.iterrows():
-            index = customers_map[str(row['CustomerID'])]
-            matrix[index][0] = row['CountryCode']
-            matrix[index][1] = row['WorkingHours']
-            matrix[index][2] = row['Spender']
+        for row in df.values:
+            index = customers_map[str(row[0])]
+            matrix[index][0] = row[1]
+            matrix[index][1] = row[2]
+            matrix[index][2] = row[3]
 
-        similarity_matrix = np.zeros((n, n))
         # For each customer, compute how similar they are to each other customer.
-        for i in range(n):
-            for j in range(n):
-                pass
-                # cosine similarity = 1 - cosine distance
-                similarity_matrix[i][j] = 1 - spatial.distance.cosine(matrix[i], matrix[j])
+        if config.use_cupy:
+            similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(matrix)))
+        else:
+            similarity_matrix = cosine_similarity(sparse.csr_matrix(matrix))
 
         hf.save_matrix(similarity_matrix, 'meta_data/similarity_matrix.csv')
 

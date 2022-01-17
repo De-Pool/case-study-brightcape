@@ -1,5 +1,6 @@
-import csv
 import json
+
+import pandas as pd
 
 import config
 
@@ -20,15 +21,7 @@ def save_matrix(matrix, name):
 
 def read_matrix(name):
     # Don't use np.gentxt, since it is not optimized.
-    file = open('./data/' + name)
-    dialect = csv.Sniffer().sniff(file.read(4048))
-    file.seek(0)
-    reader = csv.reader(file, dialect)
-    data = []
+    chunks = pd.read_csv('./data/' + name, chunksize=1000000, header=None)
+    df = pd.concat(chunks)
 
-    for row in reader:
-        row = [x for x in row if x != ""]
-        data.append(row)
-
-    matrix = np.asarray(data, dtype=np.float)
-    return matrix
+    return df.values
