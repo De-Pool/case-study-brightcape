@@ -1,3 +1,4 @@
+import pathlib
 from math import sqrt
 
 import config
@@ -6,7 +7,7 @@ if config.use_cupy:
     import cupy as np
 else:
     import numpy as np
-import basic_collaborative_filtering as bcf
+import test_model
 import helper_functions as hf
 import pre_process_data as ppd
 import similarity_meta_data as smd
@@ -14,24 +15,35 @@ import split_data as split
 
 
 class CollaborativeFilteringKUNN(object):
-    def __init__(self, filename, split_method, k_products, k_customers, plot):
+    def __init__(self, filename, split_method, k_products, k_customers, plot, save):
+        # Create the /kunn_cf directory
+        pathlib.Path('./data/kunn_cf').mkdir(parents=True, exist_ok=True)
+
+        self.save = save
         self.k_products = k_products
         self.k_customers = k_customers
+        self.split_method = split_method
 
         df_raw = ppd.process_data(filename=filename)
         self.df_clean = ppd.clean_data(df_raw, plot=plot)
 
-        # Create a customer - product matrix (n x m)
-        self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
-        self.n = len(self.customers_map)
-        self.m = len(self.products_map)
+        if self.split_method != 'temporal':
+            # Create a customer - product matrix (n x m)
+            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
 
         # Split the utility matrix into train and test data
-        if split_method == 'one_out':
+        if self.split_method == 'one_out':
             self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
-        elif split_method == 'last_out':
+        elif self.split_method == 'last_out':
             self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
                                                                      self.products_map)
+        elif self.split_method == 'temporal':
+            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
+                self.df_clean, 0.05)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
         else:
             self.train_matrix, self.test_data = self.matrix, []
 
@@ -56,7 +68,7 @@ class CollaborativeFilteringKUNN(object):
 
             # Create 2 similarity matrices, for both products and customers
             self.similarity_matrix_products = np.zeros((self.m, self.m))
-            self.similarity_matrix_customers = np.zeros((self.m, self.m))
+            self.similarity_matrix_customers = np.zeros((self.n, self.n))
 
             # For each customer, compute how similar they are to each other customer.
             for i in range(self.n):
@@ -71,7 +83,7 @@ class CollaborativeFilteringKUNN(object):
             hf.save_matrix(self.similarity_matrix_products, '/kunn_cf/similarity_matrix_products.csv')
             hf.save_matrix(self.similarity_matrix_customers, '/kunn_cf/similarity_matrix_customers.csv')
 
-    def predict_ratings_matrix(self, save):
+    def predict_ratings_matrix(self):
         try:
             self.ratings_matrix = hf.read_matrix('kunn_cf/ratings_matrix.csv')
         except IOError:
@@ -89,10 +101,9 @@ class CollaborativeFilteringKUNN(object):
 
             # Set each rating to 0 for products which have already been bought.
             non_zero = np.where(self.matrix > 0)
-            for i in range(len(non_zero[0])):
-                self.ratings_matrix[non_zero[i]][non_zero[i]] = 0
+            self.ratings_matrix[non_zero] = 0
 
-            if save:
+            if self.save:
                 hf.save_matrix(self.ratings_matrix, 'kunn_cf/ratings_matrix.csv')
 
     def customer_similarity(self, i, j):
@@ -175,21 +186,21 @@ class CollaborativeFilteringKUNN(object):
 # Another method which will be explored is Alternating Least Squares.
 def main():
     filename_xlsx = './data/data-raw.xlsx'
-    filename_recommendations = '/kunn_cf/recommendations.csv'
     save = True
     # k nearest neighbours for customers
     k_c = 25
     # k_p nearest neighbours for products
     k_p = 25
     # Get r recommendations
-    r = 10
+    r = 200
 
-    b_kunn = CollaborativeFilteringKUNN(filename_xlsx, 'last_out', k_p, k_c, False)
+    b_kunn = CollaborativeFilteringKUNN(filename_xlsx, 'last_out', k_p, k_c, False, save)
 
     # Create customer - customer similarity matrix (n x n) and a product - product similarity matrix (m x m)
-    b_kunn.predict_ratings_matrix(save=False)
-
-    recommendations = bcf.predict_recommendation(b_kunn.ratings_matrix, b_kunn.n, r, filename_recommendations, save)
+    b_kunn.create_similarity_matrices()
+    b_kunn.ratings_matrix()
+    s = test_model.hit_rate(b_kunn, r)
+    print(s)
 
 
 if __name__ == '__main__':

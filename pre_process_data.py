@@ -1,5 +1,4 @@
 import csv
-import json
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -13,8 +12,6 @@ else:
 import openpyxl
 import pandas as pd
 import seaborn as sns
-
-import helper_functions as hf
 
 
 def process_data(filename):
@@ -66,8 +63,11 @@ def clean_data(df, plot):
     # We drop the observations with a missing CustomerID, as they are of no use
     df = df.dropna(axis=0, subset=["CustomerID"])
 
-    # Drop all customerID's with only 1 ID (they will appear only once in our dataset)
-    df = df[df.duplicated(subset=["CustomerID"], keep=False)]
+    # Drop all items which have been bought 5 times or less
+    df = df.groupby('StockCode').filter(lambda x: len(x) > 5)
+
+    # Drop all Customers which have bought 5 products or less.
+    df = df.groupby('CustomerID').filter(lambda x: len(x) > 5)
 
     # We don't need: InvoiceNo, Description
     # these might be useful in more complex models
@@ -78,43 +78,33 @@ def clean_data(df, plot):
 
 
 def create_customer_product_matrix(df_clean):
-    try:
-        matrix = hf.read_matrix('matrix.csv')
-        customers_map = json.load(open('./data/customers_map.json'))
-        products_map = json.load(open('./data/products_map.json'))
-    except IOError:
-        print("Didn't find a saved matrix, creating it...")
-        # If the matrix hasn't been saved locally, compute the matrix
-        # Group by CustomerID and StockCode and sum over the quantity
-        # (some customers have bought a product more than once)
-        df_clean = df_clean.groupby(['CustomerID', 'StockCode']).agg({'Quantity': ['sum']}).reset_index()
+    # If the matrix hasn't been saved locally, compute the matrix
+    # Group by CustomerID and StockCode and sum over the quantity
+    # (some customers have bought a product more than once)
+    df_clean = df_clean.groupby(['CustomerID', 'StockCode']).agg({'Quantity': ['sum']}).reset_index()
 
-        # Get unique customers and unique products, n customers, m products
-        unique_customers = df_clean['CustomerID'].unique()
-        unique_products = df_clean['StockCode'].unique()
-        n = len(unique_customers)
-        m = len(unique_products)
+    # Get unique customers and unique products, n customers, m products
+    unique_customers = df_clean['CustomerID'].unique()
+    unique_products = df_clean['StockCode'].unique()
+    n = len(unique_customers)
+    m = len(unique_products)
 
-        # Create a 1 to 1 mapping for both customers and products
-        # (map the CustomerID and StockCode to an index, ranging from (0, n) and (0, m)
-        customers_map = dict()
-        for i in range(n):
-            customers_map[str(unique_customers[i])] = i
+    # Create a 1 to 1 mapping for both customers and products
+    # (map the CustomerID and StockCode to an index, ranging from (0, n) and (0, m)
+    customers_map = dict()
+    for i in range(n):
+        customers_map[str(unique_customers[i])] = i
 
-        products_map = dict()
-        for i in range(m):
-            products_map[str(unique_products[i])] = i
+    products_map = dict()
+    for i in range(m):
+        products_map[str(unique_products[i])] = i
 
-        # Create a n x m matrix
-        matrix = np.zeros((n, m))
+    # Create a n x m matrix
+    matrix = np.zeros((n, m))
 
-        for row in tqdm(df_clean.values):
-            row_index = customers_map[str(row[0])]
-            col_index = products_map[row[1]]
-            matrix[row_index][col_index] = 1
-
-        hf.save_dict(customers_map, 'customers_map.json')
-        hf.save_dict(products_map, 'products_map.json')
-        hf.save_matrix(matrix, 'matrix.csv')
+    for row in tqdm(df_clean.values):
+        row_index = customers_map[str(row[0])]
+        col_index = products_map[row[1]]
+        matrix[row_index][col_index] = 1
 
     return matrix, customers_map, products_map

@@ -8,30 +8,22 @@ from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 
-import helper_functions as hf
-
 
 def meta_data_similarity_matrix(df, customers_map, n):
-    try:
-        similarity_matrix = hf.read_matrix('meta_data/similarity_matrix.csv')
-    except IOError:
-        print("Didn't find a meta data similarity matrix, creating it...")
-        df = similarity_meta_data(df)
-        # Create a n x m matrix
-        matrix = np.zeros((n, 3))
-        for row in df.values:
-            index = customers_map[str(row[0])]
-            matrix[index][0] = row[1]
-            matrix[index][1] = row[2]
-            matrix[index][2] = row[3]
+    df = similarity_meta_data(df)
+    # Create a n x m matrix
+    matrix = np.zeros((n, 3))
+    for row in df.values:
+        index = customers_map[str(row[0])]
+        matrix[index][0] = row[1]
+        matrix[index][1] = row[2]
+        matrix[index][2] = row[3]
 
-        # For each customer, compute how similar they are to each other customer.
-        if config.use_cupy:
-            similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(matrix)))
-        else:
-            similarity_matrix = cosine_similarity(sparse.csr_matrix(matrix))
-
-        hf.save_matrix(similarity_matrix, 'meta_data/similarity_matrix.csv')
+    # For each customer, compute how similar they are to each other customer.
+    if config.use_cupy:
+        similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(matrix)))
+    else:
+        similarity_matrix = cosine_similarity(sparse.csr_matrix(matrix))
 
     return similarity_matrix
 

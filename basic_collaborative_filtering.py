@@ -1,3 +1,5 @@
+import pathlib
+
 import config
 
 if config.use_cupy:
@@ -7,6 +9,7 @@ else:
 from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
+import test_model
 import helper_functions as hf
 import pre_process_data as ppd
 import similarity_meta_data as smd
@@ -15,16 +18,21 @@ import time
 
 
 class CollaborativeFilteringBasic(object):
-    def __init__(self, filename, split_method, k, plot):
-        self.k = k
+    def __init__(self, filename, split_method, k, alpha, plot, save):
+        # Create the /basic_cf directory
+        pathlib.Path('./data/basic_cf').mkdir(parents=True, exist_ok=True)
 
+        self.k = k
+        self.alpha = alpha
+        self.save = save
         df_raw = ppd.process_data(filename=filename)
         self.df_clean = ppd.clean_data(df_raw, plot=plot)
 
-        # Create a customer - product matrix (n x m)
-        self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
-        self.n = len(self.customers_map)
-        self.m = len(self.products_map)
+        if split_method != 'temporal':
+            # Create a customer - product matrix (n x m)
+            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
 
         # Split the utility matrix into train and test data
         if split_method == 'one_out':
@@ -32,6 +40,11 @@ class CollaborativeFilteringBasic(object):
         elif split_method == 'last_out':
             self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
                                                                      self.products_map)
+        elif split_method == 'temporal':
+            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
+                self.df_clean, 0.05)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
         else:
             self.train_matrix, self.test_data = self.matrix, []
 
@@ -42,19 +55,14 @@ class CollaborativeFilteringBasic(object):
         self.ratings_matrix = None
 
     def create_similarity_matrix(self):
-        try:
-            self.similarity_matrix = hf.read_matrix('basic_cf/similarity_matrix.csv')
-        except IOError:
-            print("Didn't find a similarity matrix, creating it...")
+        # For each customer, compute how similar they are to each other customer.
+        if config.use_cupy:
+            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(self.matrix)))
+        else:
+            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.matrix))
+        self.similarity_matrix = (1 - self.alpha) * self.similarity_matrix + self.alpha * self.smd_matrix
 
-            # For each customer, compute how similar they are to each other customer.
-            if config.use_cupy:
-                self.similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(self.matrix)))
-            else:
-                self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.matrix))
-            hf.save_matrix(self.similarity_matrix, 'basic_cf/similarity_matrix.csv')
-
-    def predict_ratings_matrix(self, save):
+    def predict_ratings_matrix(self):
         try:
             self.ratings_matrix = hf.read_matrix('basic_cf/ratings_matrix.csv')
         except IOError:
@@ -68,11 +76,10 @@ class CollaborativeFilteringBasic(object):
                     self.ratings_matrix[i][j] = self.compute_score(k_neighbours, j)
 
             # Set each rating to 0 for products which have already been bought.
-            non_zero = np.where(self.matrix > 0)[0]
-            for i in range(len(non_zero)):
-                self.ratings_matrix[non_zero[i]][non_zero[i]] = 0
+            non_zero = np.where(self.matrix > 0)
+            self.ratings_matrix[non_zero] = 0
 
-            if save:
+            if self.save:
                 hf.save_matrix(self.ratings_matrix, 'basic_cf/ratings_matrix.csv')
 
     def find_k_n_n(self, index):
@@ -93,34 +100,16 @@ class CollaborativeFilteringBasic(object):
         k_neighbours = self.find_k_n_n(i)
         return self.compute_score(k_neighbours, j)
 
-    def test_model(self, measure):
-        if measure == 'simple':
-            # for j in range(1000):
-            #     s1 = 0
-            #     for i in range(len(self.test_data)):
-            #         s1 += self.predict_rating(i, random.randint(0, self.m - 1))
-            #     print(s1 / len(self.test_data))
-            s = 0
-            for i in range(len(self.test_data)):
-                s += self.predict_rating(i, int(self.test_data[i]))
-            return s / len(self.test_data)
 
-
-def predict_recommendation(ratings_matrix, n, r, filename, save):
-    try:
-        recommendations = hf.read_matrix(filename)
-    except IOError:
-        print("Didn't find recommendations, creating it...")
-        recommendations = np.zeros((n, r))
-        # For each customer, find k nearest neighbours and predict r recommendations.
-        for i in range(n - 1):
-            ratings = np.argsort(ratings_matrix[i, :])[::-1]
-            if len(ratings) > r:
-                recommendations[i] = ratings[0:r]
-            else:
-                recommendations[i] = ratings
-        if save:
-            hf.save_matrix(recommendations, filename)
+def predict_recommendation(ratings_matrix, n, r):
+    recommendations = np.zeros((n, r))
+    # For each customer, find k nearest neighbours and predict r recommendations.
+    for i in range(n - 1):
+        ratings = np.argsort(ratings_matrix[i, :])[::-1]
+        if len(ratings) > r:
+            recommendations[i] = ratings[0:r]
+        else:
+            recommendations[i] = ratings
 
     return recommendations
 
@@ -134,24 +123,23 @@ def predict_recommendation(ratings_matrix, n, r, filename, save):
 def main():
     # Process data
     filename_xslx = './data/data-raw.xlsx'
-    filename_recommendations = 'recommendations.csv'
-    # k nearest neighbours -> based on customer similarity
     save = True
-    k = 25
-    # r recommendations
-    r = 10
+
+    # k nearest neighbours, r recommendations, alpha is how much we weigh the meta data similarity matrix
+    k = 100
+    r = 500
+    alpha = 0.1
 
     start = time.time()
 
-    cf_knn = CollaborativeFilteringBasic(filename_xslx, 'last_out', k, False)
+    cf_knn = CollaborativeFilteringBasic(filename_xslx, split_method='temporal', k=k,
+                                         alpha=alpha, plot=False, save=save)
     cf_knn.create_similarity_matrix()
-    s = cf_knn.test_model('simple')
+    cf_knn.predict_ratings_matrix()
+    acc = test_model.hit_rate(model=cf_knn, r=r)
 
-    end = time.time()
-
-    print(end - start)
-    print(s)
-    # recommendations = predict_recommendation(cf_knn.ratings_matrix, cf_knn.n, r, filename_recommendations, save)
+    print(time.time() - start)
+    print(acc)
 
 
 if __name__ == '__main__':
