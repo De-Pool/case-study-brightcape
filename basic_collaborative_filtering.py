@@ -1,5 +1,13 @@
-import numpy as np
-from scipy import sparse
+import random
+
+import config
+
+if config.use_cupy:
+    import cupy as np
+    from cupyx.scipy import sparse
+else:
+    import numpy as np
+    from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
 import helper_functions as hf
@@ -59,8 +67,8 @@ class CollaborativeFilteringBasic(object):
                     self.ratings_matrix[i][j] = self.compute_score(k_neighbours, j)
 
             # Set each rating to 0 for products which have already been bought.
-            non_zero = np.where(self.matrix > 0)
-            for i in range(len(non_zero[0])):
+            non_zero = np.where(self.matrix > 0)[0]
+            for i in range(len(non_zero)):
                 self.ratings_matrix[non_zero[i]][non_zero[i]] = 0
 
             if save:
@@ -83,6 +91,18 @@ class CollaborativeFilteringBasic(object):
     def predict_rating(self, i, j):
         k_neighbours = self.find_k_n_n(i)
         return self.compute_score(k_neighbours, j)
+
+    def test_model(self, measure):
+        if measure == 'simple':
+            for j in range(1000):
+                s1 = 0
+                for i in range(len(self.test_data)):
+                    s1 += self.predict_rating(i, random.randint(0, self.m - 1))
+                print(s1 / len(self.test_data))
+            s = 0
+            for i in range(len(self.test_data)):
+                s += self.predict_rating(i, int(self.test_data[i]))
+            return s / len(self.test_data)
 
 
 def predict_recommendation(ratings_matrix, n, r, filename, save):
@@ -121,9 +141,10 @@ def main():
     r = 10
 
     cf_knn = CollaborativeFilteringBasic(filename_xslx, 'last_out', k, False)
-    cf_knn.predict_ratings_matrix(False)
-
-    recommendations = predict_recommendation(cf_knn.ratings_matrix, cf_knn.n, r, filename_recommendations, save)
+    cf_knn.create_similarity_matrix()
+    s = cf_knn.test_model('simple')
+    print(s)
+    # recommendations = predict_recommendation(cf_knn.ratings_matrix, cf_knn.n, r, filename_recommendations, save)
 
 
 if __name__ == '__main__':

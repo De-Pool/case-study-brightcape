@@ -1,7 +1,12 @@
 import csv
 import json
 
-import numpy as np
+import config
+
+if config.use_cupy:
+    import cupy as np
+else:
+    import numpy as np
 
 
 def save_dict(dictionary, name):

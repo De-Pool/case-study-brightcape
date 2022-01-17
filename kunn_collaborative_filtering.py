@@ -1,7 +1,11 @@
 from math import sqrt
 
-import numpy as np
+import config
 
+if config.use_cupy:
+    import cupy as np
+else:
+    import numpy as np
 import basic_collaborative_filtering as bcf
 import helper_functions as hf
 import pre_process_data as ppd
@@ -53,9 +57,8 @@ class CollaborativeFilteringKUNN(object):
 
             # c(x) is a function, which returns the count of x, wrt the rating
             # So given product p, c(p) will return the count of how much customers prefer product p
-            if self.c_products is None or self.c_customers is None:
-                self.c_products = self.train_matrix.sum(axis=0)
-                self.c_customers = self.train_matrix.sum(axis=1)
+            self.c_products = self.train_matrix.sum(axis=0)
+            self.c_customers = self.train_matrix.sum(axis=1)
 
             # For each customer, compute how similar they are to each other customer.
             for i in range(self.n):

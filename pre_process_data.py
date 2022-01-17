@@ -2,7 +2,13 @@ import csv
 import json
 
 import matplotlib.pyplot as plt
-import numpy as np
+
+import config
+
+if config.use_cupy:
+    import cupy as np
+else:
+    import numpy as np
 import openpyxl
 import pandas as pd
 import seaborn as sns

@@ -1,4 +1,9 @@
-import numpy as np
+import config
+
+if config.use_cupy:
+    import cupy as np
+else:
+    import numpy as np
 
 
 def leave_one_out(utility_matrix, n):
