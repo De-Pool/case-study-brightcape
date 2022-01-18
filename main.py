@@ -5,9 +5,15 @@ import kunn_collaborative_filtering as kunn
 import test_model
 
 
+# The idea of this method is to solve the challenge by reducing it
+# to an instance of a collaborative filtering problem, with binary, positive only data.
+# There are multiple algorithms which can be used to do this, the most basic one will be using
+# a cosine similarity where the most-frequent product will be recommended.
+# A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
+# Another method which will be explored is Alternating Least Squares.
 def main():
     filename_xlsx = './data/data-raw.xlsx'
-    save = False
+    save = True
     # k nearest neighbours for customers
     k_c = 30
     # k_p nearest neighbours for products
@@ -25,8 +31,8 @@ def main():
 
     # ALS
     r = dict()
-    r['train_matrix'] = model_kunn.train_matrix
-    r['test_data'] = model_kunn.test_data
+    r['train_matrix'] = model_basic_cf.train_matrix
+    r['test_data'] = model_basic_cf.test_data
     r['r'] = recommendations
 
     model_als = implicit.als.AlternatingLeastSquares(factors=50)

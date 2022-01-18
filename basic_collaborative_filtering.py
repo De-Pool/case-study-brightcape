@@ -9,18 +9,17 @@ else:
 from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
-import test_model
 import helper_functions as hf
 import pre_process_data as ppd
 import similarity_meta_data as smd
 import split_data as split
-import time
 
 
 class CollaborativeFilteringBasic(object):
     def __init__(self, filename, split_method, k, alpha, plot, save):
-        # Create the /basic_cf directory
-        pathlib.Path('./data/basic_cf').mkdir(parents=True, exist_ok=True)
+        if save:
+            # Create the /basic_cf directory
+            pathlib.Path('./data/basic_cf').mkdir(parents=True, exist_ok=True)
 
         self.k = k
         self.alpha = alpha
@@ -118,34 +117,3 @@ def predict_recommendation(ratings_matrix, n, r):
             recommendations[i] = ratings
 
     return recommendations
-
-
-# The idea of this method is to solve the challenge by reducing it
-# to an instance of a collaborative filtering problem, with binary, positive only data.
-# There are multiple algorithms which can be used to do this, the most basic one will be using
-# a cosine similarity where the most-frequent product will be recommended.
-# A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
-# Another method which will be explored is Alternating Least Squares.
-def main():
-    filename_xslx = './data/data-raw.xlsx'
-    save = True
-
-    # k nearest neighbours, r recommendations, alpha is how much we weigh the meta data similarity matrix
-    r = 100
-    k = 100
-    alpha = 0.1
-
-    start = time.time()
-
-    cf_knn = CollaborativeFilteringBasic(filename_xslx, split_method='temporal', k=k,
-                                         alpha=alpha, plot=False, save=save)
-    cf_knn.create_similarity_matrix()
-    cf_knn.predict_ratings_matrix()
-    acc = test_model.hit_rate(model=cf_knn, r=r)
-
-    print(time.time() - start)
-    print(acc)
-
-
-if __name__ == '__main__':
-    main()

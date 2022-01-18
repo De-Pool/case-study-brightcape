@@ -7,7 +7,6 @@ if config.use_cupy:
     import cupy as np
 else:
     import numpy as np
-import test_model
 import helper_functions as hf
 import pre_process_data as ppd
 import similarity_meta_data as smd
@@ -16,8 +15,9 @@ import split_data as split
 
 class CollaborativeFilteringKUNN(object):
     def __init__(self, filename, split_method, k_products, k_customers, alpha, plot, save):
-        # Create the /kunn_cf directory
-        pathlib.Path('./data/kunn_cf').mkdir(parents=True, exist_ok=True)
+        if save:
+            # Create the /kunn_cf directory
+            pathlib.Path('./data/kunn_cf').mkdir(parents=True, exist_ok=True)
 
         self.alpha = alpha
         self.k_products = k_products
@@ -181,31 +181,6 @@ class CollaborativeFilteringKUNN(object):
         knn = knn[knn != i][-self.k_products:]
         return knn, all_sims[knn]
 
-
-# The idea of this method is to solve the challenge by reducing it
-# to an instance of a collaborative filtering problem, with binary, positive only data.
-# There are multiple algorithms which can be used to do this, the most basic one will be using
-# a cosine similarity where the most-frequent product will be recommended.
-# A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
-# Another method which will be explored is Alternating Least Squares.
-def main():
-    filename_xlsx = './data/data-raw.xlsx'
-    save = True
-    # k nearest neighbours for customers
-    k_c = 25
-    # k_p nearest neighbours for products
-    k_p = 25
-    # Get r recommendations
-    r = 200
-
-    b_kunn = CollaborativeFilteringKUNN(filename_xlsx, 'last_out', k_p, k_c, False, save)
-
-    # Create customer - customer similarity matrix (n x n) and a product - product similarity matrix (m x m)
-    b_kunn.create_similarity_matrices()
-    b_kunn.ratings_matrix()
-    s = test_model.hit_rate(b_kunn, r)
-    print(s)
-
-
-if __name__ == '__main__':
-    main()
+    def fit(self):
+        self.create_similarity_matrices()
+        self.predict_ratings_matrix()
