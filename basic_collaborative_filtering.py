@@ -25,22 +25,24 @@ class CollaborativeFilteringBasic(object):
         self.k = k
         self.alpha = alpha
         self.save = save
+        self.split_method = split_method
+
         df_raw = ppd.process_data(filename=filename)
         self.df_clean = ppd.clean_data(df_raw, plot=plot)
 
-        if split_method != 'temporal':
+        if self.split_method != 'temporal':
             # Create a customer - product matrix (n x m)
             self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
             self.n = len(self.customers_map)
             self.m = len(self.products_map)
 
         # Split the utility matrix into train and test data
-        if split_method == 'one_out':
+        if self.split_method == 'one_out':
             self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
-        elif split_method == 'last_out':
+        elif self.split_method == 'last_out':
             self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
                                                                      self.products_map)
-        elif split_method == 'temporal':
+        elif self.split_method == 'temporal':
             self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
                 self.df_clean, 0.05)
             self.n = len(self.customers_map)
@@ -100,10 +102,14 @@ class CollaborativeFilteringBasic(object):
         k_neighbours = self.find_k_n_n(i)
         return self.compute_score(k_neighbours, j)
 
+    def fit(self):
+        self.create_similarity_matrix()
+        self.predict_ratings_matrix()
+
 
 def predict_recommendation(ratings_matrix, n, r):
     recommendations = np.zeros((n, r))
-    # For each customer, find k nearest neighbours and predict r recommendations.
+    # For each customer, predict r recommendations.
     for i in range(n - 1):
         ratings = np.argsort(ratings_matrix[i, :])[::-1]
         if len(ratings) > r:
@@ -121,13 +127,12 @@ def predict_recommendation(ratings_matrix, n, r):
 # A more complex method will be using k-Unified Nearest Neighbours (k-UNN)
 # Another method which will be explored is Alternating Least Squares.
 def main():
-    # Process data
     filename_xslx = './data/data-raw.xlsx'
     save = True
 
     # k nearest neighbours, r recommendations, alpha is how much we weigh the meta data similarity matrix
+    r = 100
     k = 100
-    r = 500
     alpha = 0.1
 
     start = time.time()

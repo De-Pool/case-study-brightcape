@@ -15,13 +15,14 @@ import split_data as split
 
 
 class CollaborativeFilteringKUNN(object):
-    def __init__(self, filename, split_method, k_products, k_customers, plot, save):
+    def __init__(self, filename, split_method, k_products, k_customers, alpha, plot, save):
         # Create the /kunn_cf directory
         pathlib.Path('./data/kunn_cf').mkdir(parents=True, exist_ok=True)
 
-        self.save = save
+        self.alpha = alpha
         self.k_products = k_products
         self.k_customers = k_customers
+        self.save = save
         self.split_method = split_method
 
         df_raw = ppd.process_data(filename=filename)
@@ -63,6 +64,7 @@ class CollaborativeFilteringKUNN(object):
         try:
             self.similarity_matrix_products = hf.read_matrix('/kunn_cf/similarity_matrix_products.csv')
             self.similarity_matrix_customers = hf.read_matrix('/kunn_cf/similarity_matrix_customers.csv')
+            self.similarity_matrix_customers = (1 - self.alpha) * self.similarity_matrix_customers + self.alpha * self.smd_matrix
         except IOError:
             print("Didn't find similarity matrices, creating it...")
 
@@ -117,7 +119,8 @@ class CollaborativeFilteringKUNN(object):
             customer_product = self.c_customers[i] * self.c_customers[j]
             similarity = 0
             for product in in_common_products:
-                similarity += 1 / sqrt(customer_product * self.c_products[product])
+                if customer_product != 0 and self.c_products[product] != 0:
+                    similarity += 1 / sqrt(customer_product * self.c_products[product])
             return similarity
 
     def product_similarity(self, i, j):
@@ -131,7 +134,8 @@ class CollaborativeFilteringKUNN(object):
             product_product = self.c_products[i] * self.c_products[j]
             similarity = 0
             for customer in in_common_customers:
-                similarity += 1 / sqrt(product_product * self.c_customers[customer])
+                if product_product != 0 and self.c_customers[customer] != 0:
+                    similarity += 1 / sqrt(product_product * self.c_customers[customer])
             return similarity
 
     def compute_score(self, i, j, knn_customer, knn_product):
