@@ -3,6 +3,7 @@ import implicit
 import basic_collaborative_filtering as bcf
 import kunn_collaborative_filtering as kunn
 import test_model
+import stockcodes
 
 
 # The idea of this method is to solve the challenge by reducing it
@@ -45,6 +46,11 @@ def main():
     print(hit_rate_als)
     print(hit_rate_kunn)
     print(hit_rate_basic)
+
+    
+    
+    hit_rate_recommendation = test_model.hit_rate_adam(model_basic_cf, recommendations)
+    stockcodes.stockfunction(hit_rate_recommendation, model_basic_cf.test_data, model_kunn, recommendations)
 
 
 if __name__ == '__main__':
