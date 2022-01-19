@@ -101,9 +101,24 @@ class CollaborativeFilteringBasic(object):
         k_neighbours = self.find_k_n_n(i)
         return self.compute_score(k_neighbours, j)
 
-    def fit(self):
+    def fit(self, fast=True):
         self.create_similarity_matrix()
-        self.predict_ratings_matrix()
+        if fast:
+            self.predict_ratings_matrix_fast()
+        else:
+            self.predict_ratings_matrix()
+
+    # Optimized algorithm, using some clever linear algebra
+    def predict_ratings_matrix_fast(self):
+        customers_filter = (np.argsort(np.argsort(self.similarity_matrix, axis=1)) >=
+                            self.similarity_matrix.shape[
+                                1] - self.k) * 1
+        np.fill_diagonal(customers_filter, 0)
+
+        self.ratings_matrix = (customers_filter @ self.train_matrix) / self.k
+        # Set each rating to 0 for products which have already been bought.
+        non_zero = np.where(self.matrix > 0)
+        self.ratings_matrix[non_zero] = 0
 
 
 def predict_recommendation(ratings_matrix, n, r):
