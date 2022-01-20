@@ -1,9 +1,9 @@
 import math
 
 import numpy as np
-from implicit.approximate_als import AlternatingLeastSquares as als
-from implicit.cpu.bpr import BayesianPersonalizedRanking as bpr
-from implicit.lmf import LogisticMatrixFactorization as lmf
+from implicit.approximate_als import AlternatingLeastSquares as ALS
+from implicit.cpu.bpr import BayesianPersonalizedRanking as BPR
+from implicit.lmf import LogisticMatrixFactorization as LMF
 from scipy import sparse
 
 import basic_collaborative_filtering as bcf
@@ -66,7 +66,7 @@ def compute_performance_multiple(recommendations, test_data, n, decimals):
 
 
 def all_methods(model, r, decimals=4, similar_items=False):
-    if isinstance(model, (als, bpr, lmf)):
+    if isinstance(model, (ALS, BPR, LMF)):
         # r = [train_matrix, split_method, r, products_map, df_clean]
         matrix = sparse.csr_matrix(r['train_matrix'])
         model.fit(matrix.T)
@@ -80,9 +80,10 @@ def all_methods(model, r, decimals=4, similar_items=False):
 
             new_test_set = dict()
             for i in range(len(r['test_data'])):
-                test_instances = [r['test_data'][i]]
                 if i in extra_recommendations:
-                    test_instances.append(extra_recommendations[i])
+                    test_instances = [*[r['test_data'][i]], *extra_recommendations[i]]
+                else:
+                    test_instances = [r['test_data'][i]]
                 new_test_set[i] = test_instances
             return compute_performance_multiple(recommendations, new_test_set, len(r['train_matrix']), decimals)
         elif isinstance(r['test_data'], dict):
@@ -98,9 +99,11 @@ def all_methods(model, r, decimals=4, similar_items=False):
 
             new_test_set = dict()
             for i in range(model.n):
-                test_instances = [model.test_data[i]]
+                #TODO fix
                 if i in extra_recommendations:
-                    test_instances.append(extra_recommendations[i])
+                    test_instances = [*[model.test_data[i]], *extra_recommendations[i]]
+                else:
+                    test_instances = [model.test_data[i]]
                 new_test_set[i] = test_instances
             return compute_performance_multiple(recommendations, new_test_set, model.n, decimals)
         elif isinstance(model.test_data, dict):
@@ -164,7 +167,7 @@ def filter_similar_items_single(test_stock_code, recommendations_stock_codes, st
         if stock_code[:3] != test_stock_code[:3] or stock_code == test_stock_code:
             continue
         recommendation = stock_code_df[stock_code_df.StockCode == str(stock_code, 'UTF-8')]
-        if recommendation.UnitPrice.values[0] > upper_price or recommendation.UnitPrice.values[0] < lower_price:
+        if recommendation.empty or recommendation.UnitPrice.values[0] > upper_price or recommendation.UnitPrice.values[0] < lower_price:
             continue
         rec_str_set = set(recommendation.Description.values[0].split(" "))
         if len(test_str_set.intersection(rec_str_set)) >= 1:

@@ -54,7 +54,7 @@ def leave_one_out(utility_matrix, n):
             p = np.random.choice(bought_products)
             test.append(p)
             utility_matrix[i][p] = 0
-    return utility_matrix, test
+    return utility_matrix, np.array(test)
 
 
 def leave_last_out(utility_matrix, df_clean, customers_map, products_map):
