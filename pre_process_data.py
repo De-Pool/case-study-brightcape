@@ -69,10 +69,11 @@ def clean_data(df, plot):
     # Drop all Customers which have bought 5 products or less.
     df = df.groupby('CustomerID').filter(lambda x: len(x) > 5)
 
-    # We don't need: InvoiceNo, Description
-    # these might be useful in more complex models
-    drop = ["InvoiceNo", "Description"]
-    df.drop(drop, inplace=True, axis=1)
+    # We don't need InvoiceNo, this might be useful in more complex models
+    df = df.drop(['InvoiceNo'], axis=1)
+
+    # Drop any remaining duplicates
+    df = df.drop_duplicates()
 
     return df
 

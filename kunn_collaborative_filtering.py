@@ -7,6 +7,8 @@ if config.use_cupy:
     import cupy as np
 else:
     import numpy as np
+from scipy import sparse
+
 import helper_functions as hf
 import pre_process_data as ppd
 import similarity_meta_data as smd
@@ -42,7 +44,7 @@ class CollaborativeFilteringKUNN(object):
                                                                      self.products_map)
         elif self.split_method == 'temporal':
             self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
-                self.df_clean, 0.05)
+                self.df_clean)
             self.n = len(self.customers_map)
             self.m = len(self.products_map)
         else:
@@ -97,7 +99,6 @@ class CollaborativeFilteringKUNN(object):
 
             print("Didn't find ratings, creating it...")
             self.ratings_matrix = np.zeros((self.n, self.m))
-
             for i in range(self.n):
                 k_neighbours_customer = self.find_k_n_n_customer(i)
                 for j in range(self.m):
@@ -184,9 +185,11 @@ class CollaborativeFilteringKUNN(object):
         a = c_customers_sqrt @ c_customers_sqrt.T
         b = self.train_matrix @ np.diag(1 / np.sqrt(self.c_products)) @ self.train_matrix.T
         self.similarity_matrix_customers = np.multiply(a, b)
+        self.similarity_matrix_customers = (
+                                                   1 - self.alpha) * self.similarity_matrix_customers + self.alpha * self.smd_matrix
         np.fill_diagonal(self.similarity_matrix_customers, 0)
 
-    def predict_ratings_matrix_fast(self, normalize):
+    def predict_ratings_matrix_fast(self, normalize, bought_before=True):
         # Only use k nearest neighbours
         products_filter = (np.argsort(np.argsort(self.similarity_matrix_products, axis=1)) >=
                            self.similarity_matrix_products.shape[1] - self.k_products)
@@ -205,6 +208,7 @@ class CollaborativeFilteringKUNN(object):
 
         self.ratings_matrix = product_ratings + customer_ratings
 
-        # Set each rating to 0 for products which have already been bought.
-        non_zero = np.where(self.matrix > 0)
-        self.ratings_matrix[non_zero] = 0
+        if bought_before:
+            # Set each rating to 0 for products which have already been bought.
+            non_zero = np.where(self.matrix > 0)
+            self.ratings_matrix[non_zero] = 0

@@ -43,7 +43,7 @@ class CollaborativeFilteringBasic(object):
                                                                      self.products_map)
         elif self.split_method == 'temporal':
             self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
-                self.df_clean, 0.05)
+                self.df_clean)
             self.n = len(self.customers_map)
             self.m = len(self.products_map)
         else:
@@ -109,26 +109,21 @@ class CollaborativeFilteringBasic(object):
             self.predict_ratings_matrix()
 
     # Optimized algorithm, using some clever linear algebra
-    def predict_ratings_matrix_fast(self):
+    def predict_ratings_matrix_fast(self, bought_before=True):
         customers_filter = (np.argsort(np.argsort(self.similarity_matrix, axis=1)) >=
                             self.similarity_matrix.shape[
                                 1] - self.k) * 1
         np.fill_diagonal(customers_filter, 0)
 
         self.ratings_matrix = (customers_filter @ self.train_matrix) / self.k
-        # Set each rating to 0 for products which have already been bought.
-        non_zero = np.where(self.matrix > 0)
-        self.ratings_matrix[non_zero] = 0
+
+        if bought_before:
+            # Set each rating to 0 for products which have already been bought.
+            nonzero = np.where(self.train_matrix == 1, 0, 1)
+            self.ratings_matrix = self.ratings_matrix * nonzero
 
 
-def predict_recommendation(ratings_matrix, n, r):
-    recommendations = np.zeros((n, r))
-    # For each customer, predict r recommendations.
-    for i in range(n - 1):
-        ratings = np.argsort(ratings_matrix[i, :])[::-1]
-        if len(ratings) > r:
-            recommendations[i] = ratings[0:r]
-        else:
-            recommendations[i] = ratings
-
+def predict_recommendation(ratings_matrix, r):
+    # Get the r highest ratings for each customer.
+    recommendations = np.fliplr(np.argsort(ratings_matrix))[:, :min(r, len(ratings_matrix))]
     return recommendations

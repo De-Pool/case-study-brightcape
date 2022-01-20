@@ -32,7 +32,7 @@ def meta_data_similarity_matrix(df, customers_map, n):
 def similarity_meta_data(df):
     # Country
     codes, uniques = pd.factorize(df['Country'])
-    df['CountryCode'] = codes
+    df['CountryCode'] = codes / (len(uniques))
 
     # WorkingHours
     df['WorkingHours'] = 0
@@ -46,7 +46,7 @@ def similarity_meta_data(df):
                                          'WorkingHours': 'max'}).reset_index()
 
     df['Spender'] = df.apply(spender, axis=1)
-    df.drop('Price', inplace=True, axis=1)
+    df = df.drop(['Price'], axis=1)
 
     return df
 
@@ -58,8 +58,8 @@ def spender(df):
     if df['Price'] <= 305.56:
         return 0
     elif 305.56 < df['Price'] < 1631.6225:
-        return 1
+        return 1 / 3
     elif df['Price'] > 1631.6225:
-        return 2
+        return 2 / 3
     else:
-        return 3
+        return 1

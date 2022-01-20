@@ -11,31 +11,26 @@ else:
     import numpy as np
 
 
-def temporal_split(df_clean, alpha):
+def temporal_split(df_clean, alpha=0.05):
     # Sort dataframe by date
     df_clean = df_clean.sort_values(['InvoiceDate'], ascending=True)
 
-    # alpha is fraction in test set, (1 - alpha) is fraction in train set
-    cutoff_index = int(len(df_clean) * alpha)
-    train = df_clean.iloc[:cutoff_index]
-    test = df_clean[cutoff_index:]
-
-    # A CustomerID needs to exist before and after the split
-    customers_train = train['CustomerID'].drop_duplicates()
-    customers_test = test['CustomerID'].drop_duplicates()
-
-    remaining_customers = pd.Series(np.intersect1d(customers_train.values, customers_test.values))
-    train = train[train['CustomerID'].isin(remaining_customers.values)]
-    test = test[test['CustomerID'].isin(remaining_customers.values)]
+    # Generate a test and train set
+    f = lambda g: g.iloc[len(g) - 1:] \
+        if (1 / len(g)) > alpha \
+        else g.iloc[int(round(len(g) * (1 - alpha), 0)):]
+    test = df_clean.groupby('CustomerID').apply(f).reset_index(drop=True)
+    train = pd.concat([df_clean, test]).drop_duplicates(keep=False)
+    df_clean = pd.concat([train, test])
 
     # Generate a matrix, customers_map, products_map based on the remaining data
-    matrix, customers_map, products_map = ppd.create_customer_product_matrix(pd.concat([train, test]))
+    matrix, customers_map, products_map = ppd.create_customer_product_matrix(df_clean)
 
     # Create a test_set, which is a dict, with as key customerID and as value a list of product indices
     test_set = dict()
-    for customerID, group in test.groupby('CustomerID'):
-        arr = group.StockCode.drop_duplicates().values
-        arr_map = list(map(lambda x: products_map[x], arr))
+    test = test[['CustomerID', 'StockCode']].drop_duplicates().groupby('CustomerID')
+    for customerID, group in test:
+        arr_map = list(map(lambda x: products_map[x], group.StockCode.values))
         test_set[customers_map[str(customerID)]] = arr_map
 
     # For each test instance, set the value to 0 in the train matrix.
@@ -44,7 +39,7 @@ def temporal_split(df_clean, alpha):
         for stockCode in stockCodes:
             train_matrix[customerID][stockCode] = 0
 
-    return matrix, customers_map, products_map, train_matrix, test_set, pd.concat([train, test])
+    return matrix, customers_map, products_map, train_matrix, test_set, df_clean
 
 
 def leave_one_out(utility_matrix, n):
