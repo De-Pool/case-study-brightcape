@@ -176,7 +176,6 @@ class CollaborativeFilteringKUNN(object):
         if fast:
             self.create_similarity_matrices_fast()
             self.predict_ratings_matrix_fast(normalize)
-            self.fast()
         else:
             self.create_similarity_matrices()
             self.predict_ratings_matrix()
