@@ -15,6 +15,10 @@ def save_dict(dictionary, name):
     json.dump(dictionary, json_file)
 
 
+def read_dict(name):
+    return json.load(open('./data/' + name))
+
+
 def save_matrix(matrix, name):
     np.savetxt('./data/' + name, matrix, delimiter=',')
 
@@ -25,3 +29,24 @@ def read_matrix(name):
     df = pd.concat(chunks)
 
     return df.values
+
+
+def concat(a, b):
+    if isinstance(a, int) and isinstance(b, int):
+        return [a, b]
+    elif isinstance(a, int) and isinstance(b, list):
+        return [a, *b]
+    elif isinstance(a, list) and isinstance(b, int):
+        return [*a, b]
+    elif isinstance(a, np.int32) and isinstance(b, list):
+        return [a.tolist(), *b]
+    elif isinstance(a, np.int32) and isinstance(b, int):
+        return [a.tolist(), b]
+    elif isinstance(a, np.int32) and isinstance(b, np.int32):
+        return [a.tolist(), b.tolist()]
+    elif isinstance(a, list) and isinstance(b, np.int32):
+        return [*a, b.tolist()]
+    elif isinstance(a, int) and isinstance(b, np.int32):
+        return [a, b.tolist()]
+    elif isinstance(a, list) and isinstance(b, list):
+        return [*a, *b]

@@ -30,7 +30,7 @@ def temporal_split(df_clean, alpha=0.05):
     test_set = dict()
     test = test[['CustomerID', 'StockCode']].drop_duplicates().groupby('CustomerID')
     for customerID, group in test:
-        arr_map = list(map(lambda x: products_map[x], group.StockCode.values))
+        arr_map = list(map(lambda x: int(products_map[x]), group.StockCode.values))
         test_set[customers_map[str(customerID)]] = arr_map
 
     # For each test instance, set the value to 0 in the train matrix.
@@ -44,7 +44,7 @@ def temporal_split(df_clean, alpha=0.05):
 
 def leave_one_out(utility_matrix, n):
     # Index i in the test set is the index of customer u
-    test = []
+    test_set = np.zeros(n, dtype=int)
     # For each customer, select 1 random
     for i in range(n):
         # Get all bought products from customer i
@@ -52,9 +52,9 @@ def leave_one_out(utility_matrix, n):
         if len(bought_products) > 0:
             # Choose a random product p
             p = np.random.choice(bought_products)
-            test.append(p)
+            test_set[i] = p
             utility_matrix[i][p] = 0
-    return utility_matrix, np.array(test)
+    return utility_matrix, test_set
 
 
 def leave_last_out(utility_matrix, df_clean, customers_map, products_map):
@@ -66,11 +66,11 @@ def leave_last_out(utility_matrix, df_clean, customers_map, products_map):
 
 
 def get_indices_last(df_clean, customers_map, products_map):
-    test_set = np.zeros(len(customers_map))
+    test_set = np.zeros(len(customers_map), dtype=int)
     # Sort dataframe by date
     df_clean = df_clean.sort_values(['InvoiceDate'], ascending=True)
     df_clean = df_clean.groupby(['CustomerID'])
     for customerID, group in df_clean:
         last_stock_code = group['StockCode'].iloc[-1]
-        test_set[customers_map[str(customerID)]] = products_map[str(last_stock_code)]
+        test_set[customers_map[str(customerID)]] = int(products_map[str(last_stock_code)])
     return test_set

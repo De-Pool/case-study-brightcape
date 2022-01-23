@@ -1,12 +1,19 @@
 import math
 
-import numpy as np
+import config
+if config.use_cupy:
+    import cupy as np
+else:
+    import numpy as np
 from implicit.approximate_als import AlternatingLeastSquares as ALS
 from implicit.cpu.bpr import BayesianPersonalizedRanking as BPR
 from implicit.lmf import LogisticMatrixFactorization as LMF
+from implicit.nearest_neighbours import BM25Recommender as BM25
+from implicit.nearest_neighbours import TFIDFRecommender as TFIDF
 from scipy import sparse
 
-import basic_collaborative_filtering as bcf
+import models.basic_collaborative_filtering as bcf
+import helper_functions as hf
 
 
 def compute_performance_single(recommendations, test_data, n, r, decimals):
@@ -15,9 +22,9 @@ def compute_performance_single(recommendations, test_data, n, r, decimals):
     total_map = 0
 
     for i in range(len(test_data)):
-        if int(test_data[i]) in recommendations[i].astype(int):
+        if test_data[i] in recommendations[i].astype(int):
             # indexing starts at 0, so we add 1 to get a correct rank.
-            rank = np.where(recommendations[i].astype(int) == int(test_data[i]))[0] + 1
+            rank = np.where(recommendations[i].astype(int) == test_data[i])[0] + 1
             total_hits += 1
             total_ndcg += math.log(2) / math.log(rank + 1)
             total_map += 1 / r
@@ -66,131 +73,161 @@ def compute_performance_multiple(recommendations, test_data, n, decimals):
 
 
 def all_methods(model, r, decimals=4, similar_items=False):
-    if isinstance(model, (ALS, BPR, LMF)):
-        # r = [train_matrix, split_method, r, products_map, df_clean]
+    if isinstance(model, (ALS, BPR, LMF, BM25, TFIDF)):
         matrix = sparse.csr_matrix(r['train_matrix'])
-        model.fit(matrix.T)
+        model.fit(matrix.T, show_progress=False)
+
         recommendations = np.zeros((len(r['train_matrix']), r['r']))
         for i in range(len(r['train_matrix'])):
-            recommendations[i] = np.array(list(dict(model.recommend(i, matrix, N=r['r']))))
-
-        if similar_items:
-            extra_recommendations = find_similar_items(r['test_data'], recommendations, r['products_map'],
-                                                       r['df_clean'])
-
-            new_test_set = dict()
-            for i in range(len(r['test_data'])):
-                if i in extra_recommendations:
-                    test_instances = [*[r['test_data'][i]], *extra_recommendations[i]]
-                else:
-                    test_instances = [r['test_data'][i]]
-                new_test_set[i] = test_instances
-            return compute_performance_multiple(recommendations, new_test_set, len(r['train_matrix']), decimals)
-        elif isinstance(r['test_data'], dict):
-            return compute_performance_multiple(recommendations, r['test_data'], len(recommendations), decimals)
-        else:
-            return compute_performance_single(recommendations, r['test_data'], len(r['test_data']),
-                                              len(recommendations), decimals)
+            recommendation = np.array(list(dict(model.recommend(i, matrix, N=r['r']))))
+            recommendations[i, :len(recommendation)] = recommendation
+        test_data = r['test_data']
+        df_clean = r['df_clean']
+        products_map = r['products_map']
+        n = r['n']
+        r = r['r']
     else:
         recommendations = bcf.predict_recommendation(model.ratings_matrix, r)
-        if similar_items:
-            extra_recommendations = find_similar_items(model.test_data, recommendations, model.products_map,
-                                                       model.df_clean)
+        test_data = model.test_data
+        df_clean = model.df_clean
+        products_map = model.products_map
+        n = model.n
 
-            new_test_set = dict()
-            for i in range(model.n):
-                #TODO fix
-                if i in extra_recommendations:
-                    test_instances = [*[model.test_data[i]], *extra_recommendations[i]]
-                else:
-                    test_instances = [model.test_data[i]]
-                new_test_set[i] = test_instances
-            return compute_performance_multiple(recommendations, new_test_set, model.n, decimals)
-        elif isinstance(model.test_data, dict):
-            return compute_performance_multiple(recommendations, model.test_data, model.n, decimals)
-        else:
-            return compute_performance_single(recommendations, model.test_data, model.n, r, decimals)
+    if similar_items:
+        extra_recommendations = find_extra_recommendations(test_data, recommendations, products_map, df_clean)
+
+        new_test_set = dict()
+        for i in range(n):
+            new_test_set[i] = hf.concat(test_data[i], extra_recommendations[i])
+
+        return compute_performance_multiple(recommendations, new_test_set, n, decimals)
+    elif isinstance(test_data, dict):
+        return compute_performance_multiple(recommendations, test_data, n, decimals)
+    else:
+        return compute_performance_single(recommendations, test_data, n, r, decimals)
 
 
 # test_set is either an array or dict, recommendations is matrix
 # returns a dict, which is the new test set
-def find_similar_items(test_set, recommendations, products_map, df_clean):
-    stock_codes_df = df_clean[['StockCode', 'Description', 'UnitPrice']] \
-        .drop_duplicates(subset=['StockCode'])
-    stock_codes_df = stock_codes_df.astype({'StockCode': 'string', 'UnitPrice': 'float', 'Description': 'string'})
+def find_extra_recommendations(test_set, recommendations, products_map, df_clean):
+    similar_products_dict = compute_similar_products(df_clean)
+    products_map_r = list(products_map)
+    recommendations_stock_codes = np.empty(recommendations.shape, dtype=object)
+    test_set_stock_codes = dict()
+    extra_recommendations = dict()
+
+    for stock_code, index in products_map.items():
+        recommendations_stock_codes[recommendations == index] = str(stock_code)
 
     if isinstance(test_set, dict):
-        pass
-        # recommendations_stock_codes = np.empty(recommendations.shape, dtype="S6")
-        # test_set_stock_codes = dict()
-        # for stock_code, test_instances in test_set.items():
-        #     test_set_stock_codes
-        #
-        # for stock_code, index in products_map.items():
-        #     recommendations_stock_codes[recommendations == index] = str(stock_code)
-        #
-        #
-        # correct_recommendations = dict()
-        # for i in range(len(test_set_stock_codes)):
-        #     similar_items = filter_similar_items_single(test_set_stock_codes[i], recommendations_stock_codes[i],
-        #                                                 stock_codes_df, products_map)
-        #     if len(similar_items) > 0:
-        #         correct_recommendations[i] = similar_items
-        #
-        # return correct_recommendations
+        for customerID, test_instances in test_set.items():
+            test_set_stock_codes[customerID] = list(map(lambda x: products_map_r[x], test_instances))
+
+        for customerID, test_instances in test_set_stock_codes.items():
+            similar_products = []
+            for stock_code in test_instances:
+                common_products = set(similar_products_dict[stock_code]).intersection(
+                    set(recommendations_stock_codes[customerID]))
+                similar_products = hf.concat(similar_products, list(common_products))
+            extra_recommendations[customerID] = similar_products
     else:
-        recommendations_stock_codes = np.empty(recommendations.shape, dtype="S6")
-        test_set_stock_codes = np.empty(test_set.shape, dtype="S6")
+        test_set_stock_codes = np.empty(test_set.shape, dtype=object)
         for stock_code, index in products_map.items():
-            recommendations_stock_codes[recommendations == index] = str(stock_code)
             test_set_stock_codes[test_set == index] = str(stock_code)
 
-        correct_recommendations = dict()
         for i in range(len(test_set_stock_codes)):
-            similar_items = filter_similar_items_single(test_set_stock_codes[i], recommendations_stock_codes[i],
-                                                        stock_codes_df, products_map)
-            if len(similar_items) > 0:
-                correct_recommendations[i] = similar_items
+            extra_recommendations[i] = list(
+                set(similar_products_dict[test_set_stock_codes[i]]).intersection(set(recommendations_stock_codes[i])))
 
-        return correct_recommendations
+    for customerID, test_instances in extra_recommendations.items():
+        extra_recommendations[customerID] = list(map(lambda x: products_map[x], test_instances))
 
-
-def filter_similar_items_single(test_stock_code, recommendations_stock_codes, stock_code_df, products_map):
-    similar_items = []
-    test_instance = stock_code_df[stock_code_df.StockCode == str(test_stock_code, 'UTF-8')]
-    if test_instance.empty:
-        return []
-    upper_price = test_instance.UnitPrice.values[0] * 1.1
-    lower_price = test_instance.UnitPrice.values[0] * 0.9
-    test_str_set = set(test_instance.Description.values[0].split(" "))
-    for stock_code in recommendations_stock_codes:
-        if stock_code[:3] != test_stock_code[:3] or stock_code == test_stock_code:
-            continue
-        recommendation = stock_code_df[stock_code_df.StockCode == str(stock_code, 'UTF-8')]
-        if recommendation.empty or recommendation.UnitPrice.values[0] > upper_price or recommendation.UnitPrice.values[0] < lower_price:
-            continue
-        rec_str_set = set(recommendation.Description.values[0].split(" "))
-        if len(test_str_set.intersection(rec_str_set)) >= 1:
-            similar_items.append(products_map[str(stock_code, 'UTF-8')])
-    return similar_items
+    return extra_recommendations
 
 
-def filter_similar_items_multiple(test_stock_codes, recommendations_stock_codes, stock_code_df, products_map):
-    similar_items = []
-    test_instances = stock_code_df[stock_code_df.StockCode.isin(test_stock_codes.astype(str))]
+def compute_similar_products(df_clean):
+    try:
+        similar_products_dict = hf.read_dict('similar_products_dict.json')
+    except IOError:
+        stock_codes_df = df_clean[['StockCode', 'Description', 'UnitPrice']].drop_duplicates(subset=['StockCode'])
+        stock_codes_df = stock_codes_df.astype({'StockCode': 'string', 'UnitPrice': 'float', 'Description': 'string'})
+        stock_codes_df = stock_codes_df.set_index('StockCode', drop=False)
 
-    # if test_instance.empty:
-    #     return []
-    # upper_price = test_instance.UnitPrice.values[0] * 1.1
-    # lower_price = test_instance.UnitPrice.values[0] * 0.9
-    # test_str_set = set(test_instance.Description.values[0].split(" "))
-    # for stock_code in recommendations_stock_codes:
-    #     if stock_code[:3] != test_stock_code[:3] or stock_code == test_stock_code:
-    #         continue
-    #     recommendation = stock_code_df[stock_code_df.StockCode == str(stock_code, 'UTF-8')]
-    #     if recommendation.UnitPrice.values[0] > upper_price or recommendation.UnitPrice.values[0] < lower_price:
-    #         continue
-    #     rec_str_set = set(recommendation.Description.values[0].split(" "))
-    #     if len(test_str_set.intersection(rec_str_set)) >= 1:
-    #         similar_items.append(products_map[str(stock_code, 'UTF-8')])
-    return similar_items
+        def filter(stock_code, unit_price_lower, unit_price_upper, description_set):
+            similar_products = stock_codes_df.apply(lambda row: (
+                    (row['StockCode'][:3] == stock_code[:3] and row['StockCode'] != stock_code) and
+                    (unit_price_lower <= row['UnitPrice'] <= unit_price_upper) and
+                    (len(set(row['Description'].split(" ")).intersection(description_set)) >= 1)), axis=1)
+            return similar_products[similar_products].index.tolist()
+
+        def find_similar_products(row):
+            return filter(row['StockCode'], row['UnitPrice'] * 0.9, row['UnitPrice'] * 1.1,
+                          set(row['Description'].split(' ')))
+
+        similar_products_dict = stock_codes_df.apply(lambda row: find_similar_products(row), axis=1).to_dict()
+        hf.save_dict(similar_products_dict, 'similar_products_dict.json')
+
+    return similar_products_dict
+
+# test_set is either an array or dict, recommendations is matrix
+# returns a dict, which is the new test set
+# def find_similar_items(test_set, recommendations, products_map, df_clean):
+#     stock_codes_df = df_clean[['StockCode', 'Description', 'UnitPrice']] \
+#         .drop_duplicates(subset=['StockCode'])
+#     stock_codes_df = stock_codes_df.astype({'StockCode': 'string', 'UnitPrice': 'float', 'Description': 'string'})
+#
+#     products_map_r = list(products_map)
+#     recommendations_stock_codes = np.empty(recommendations.shape, dtype="S6")
+#     test_set_stock_codes = dict()
+#     for customerID, test_instances in test_set.items():
+#         test_set_stock_codes[customerID] = list(map(lambda x: products_map_r[x], test_instances))
+#
+#     extra_recommendations = dict()
+#     if isinstance(test_set, dict):
+#         for stock_code, index in products_map.items():
+#             recommendations_stock_codes[recommendations == index] = str(stock_code)
+#
+#         for customerID, test_instances in test_set_stock_codes.items():
+#             similar_items = []
+#             for stock_code in test_instances:
+#                 similar_items = hf.concat(similar_items, filter_similar_items_single(bytes(stock_code, 'UTF-8'),
+#                                                                                      recommendations_stock_codes[
+#                                                                                          customerID],
+#                                                                                      stock_codes_df, products_map))
+#             if len(similar_items) > 0:
+#                 extra_recommendations[customerID] = similar_items
+#     else:
+#         test_set_stock_codes = np.empty(test_set.shape, dtype="S6")
+#         for stock_code, index in products_map.items():
+#             recommendations_stock_codes[recommendations == index] = str(stock_code)
+#             test_set_stock_codes[test_set == index] = str(stock_code)
+#
+#         for i in range(len(test_set_stock_codes)):
+#             extra_recommendations[i] = filter_similar_items_single(test_set_stock_codes[i], recommendations_stock_codes[i],
+#                                                         stock_codes_df, products_map)
+#
+#     for stock_code, index in products_map.items():
+#         extra_recommendations[extra_recommendations == stock_code] = index
+#
+#     return extra_recommendations
+#
+#
+# def filter_similar_items_single(test_stock_code, recommendations_stock_codes, stock_code_df, products_map):
+#     similar_items = []
+#     test_instance = stock_code_df[stock_code_df.StockCode == str(test_stock_code, 'UTF-8')]
+#     if test_instance.empty:
+#         return []
+#     upper_price = test_instance.UnitPrice.values[0] * 1.1
+#     lower_price = test_instance.UnitPrice.values[0] * 0.9
+#     test_str_set = set(test_instance.Description.values[0].split(" "))
+#     for stock_code in recommendations_stock_codes:
+#         if stock_code[:3] != test_stock_code[:3] or stock_code == test_stock_code:
+#             continue
+#         recommendation = stock_code_df[stock_code_df.StockCode == str(stock_code, 'UTF-8')]
+#         if recommendation.empty or recommendation.UnitPrice.values[0] > upper_price or recommendation.UnitPrice.values[
+#             0] < lower_price:
+#             continue
+#         rec_str_set = set(recommendation.Description.values[0].split(" "))
+#         if len(test_str_set.intersection(rec_str_set)) >= 1:
+#             similar_items.append(products_map[str(stock_code, 'UTF-8')])
+#     return similar_items

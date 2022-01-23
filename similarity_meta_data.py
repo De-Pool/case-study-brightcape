@@ -21,7 +21,7 @@ def meta_data_similarity_matrix(df, customers_map, n):
 
     # For each customer, compute how similar they are to each other customer.
     if config.use_cupy:
-        similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(matrix)))
+        similarity_matrix = np.asarray(cosine_similarity(sparse.csr_matrix(np.asnumpy(matrix))))
     else:
         similarity_matrix = cosine_similarity(sparse.csr_matrix(matrix))
 

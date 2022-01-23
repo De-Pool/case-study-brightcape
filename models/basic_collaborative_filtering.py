@@ -16,44 +16,54 @@ import split_data as split
 
 
 class CollaborativeFilteringBasic(object):
-    def __init__(self, filename, split_method, k, alpha, plot, save):
-        if save:
-            # Create the /basic_cf directory
-            pathlib.Path('./data/basic_cf').mkdir(parents=True, exist_ok=True)
-
+    def __init__(self, filename, test_train, k, alpha, plot, save):
         self.k = k
         self.alpha = alpha
         self.save = save
-        self.split_method = split_method
 
-        df_raw = ppd.process_data(filename=filename)
-        self.df_clean = ppd.clean_data(df_raw, plot=plot)
+        if save:
+            # Create the /basic_cf directory
+            pathlib.Path('../data/basic_cf').mkdir(parents=True, exist_ok=True)
 
-        if self.split_method != 'temporal':
-            # Create a customer - product matrix (n x m)
-            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-
-        # Split the utility matrix into train and test data
-        if self.split_method == 'one_out':
-            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
-        elif self.split_method == 'last_out':
-            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
-                                                                     self.products_map)
-        elif self.split_method == 'temporal':
-            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
-                self.df_clean)
+        if isinstance(test_train, dict):
+            self.matrix = test_train['matrix']
+            self.customers_map = test_train['customers_map']
+            self.products_map = test_train['products_map']
+            self.train_matrix = test_train['train_matrix']
+            self.test_data = test_train['test_data']
+            self.df_clean = test_train['df_clean']
             self.n = len(self.customers_map)
             self.m = len(self.products_map)
         else:
-            self.train_matrix, self.test_data = self.matrix, []
+            self.create_test_train(test_train, filename, plot)
 
         # Create customer - customer meta data similarity matrix (n x n)
         self.smd_matrix = smd.meta_data_similarity_matrix(self.df_clean, self.customers_map, self.n)
 
         self.similarity_matrix = None
         self.ratings_matrix = None
+
+    def create_test_train(self, test_train, filename, plot):
+        df_raw = ppd.process_data(filename=filename)
+        self.df_clean = ppd.clean_data(df_raw, plot=plot)
+
+        if test_train != 'temporal':
+            # Create a customer - product matrix (n x m)
+            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
+
+        # Split the utility matrix into train and test data
+        if test_train == 'one_out':
+            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
+        elif test_train == 'last_out':
+            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
+                                                                     self.products_map)
+        elif test_train == 'temporal':
+            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
+                self.df_clean)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
 
     def create_similarity_matrix(self):
         # For each customer, compute how similar they are to each other customer.

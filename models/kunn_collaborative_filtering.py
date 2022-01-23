@@ -7,7 +7,6 @@ if config.use_cupy:
     import cupy as np
 else:
     import numpy as np
-from scipy import sparse
 
 import helper_functions as hf
 import pre_process_data as ppd
@@ -16,39 +15,27 @@ import split_data as split
 
 
 class CollaborativeFilteringKUNN(object):
-    def __init__(self, filename, split_method, k_products, k_customers, alpha, plot, save):
-        if save:
-            # Create the /kunn_cf directory
-            pathlib.Path('./data/kunn_cf').mkdir(parents=True, exist_ok=True)
-
+    def __init__(self, filename, test_train, k_products, k_customers, alpha, plot, save):
         self.alpha = alpha
         self.k_products = k_products
         self.k_customers = k_customers
         self.save = save
-        self.split_method = split_method
 
-        df_raw = ppd.process_data(filename=filename)
-        self.df_clean = ppd.clean_data(df_raw, plot=plot)
+        if save:
+            # Create the /kunn_cf directory
+            pathlib.Path('../data/kunn_cf').mkdir(parents=True, exist_ok=True)
 
-        if self.split_method != 'temporal':
-            # Create a customer - product matrix (n x m)
-            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-
-        # Split the utility matrix into train and test data
-        if self.split_method == 'one_out':
-            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
-        elif self.split_method == 'last_out':
-            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
-                                                                     self.products_map)
-        elif self.split_method == 'temporal':
-            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
-                self.df_clean)
+        if isinstance(test_train, dict):
+            self.matrix = test_train['matrix']
+            self.customers_map = test_train['customers_map']
+            self.products_map = test_train['products_map']
+            self.train_matrix = test_train['train_matrix']
+            self.test_data = test_train['test_data']
+            self.df_clean = test_train['df_clean']
             self.n = len(self.customers_map)
             self.m = len(self.products_map)
         else:
-            self.train_matrix, self.test_data = self.matrix, []
+            self.create_test_train(test_train, filename, plot)
 
         # Create customer - customer meta data similarity matrix (n x n)
         self.smd_matrix = smd.meta_data_similarity_matrix(self.df_clean, self.customers_map, self.n)
@@ -61,6 +48,28 @@ class CollaborativeFilteringKUNN(object):
         self.similarity_matrix_products = None
         self.similarity_matrix_customers = None
         self.ratings_matrix = None
+
+    def create_test_train(self, test_train, filename, plot):
+        df_raw = ppd.process_data(filename=filename)
+        self.df_clean = ppd.clean_data(df_raw, plot=plot)
+
+        if test_train != 'temporal':
+            # Create a customer - product matrix (n x m)
+            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
+
+        # Split the utility matrix into train and test data
+        if test_train == 'one_out':
+            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
+        elif test_train == 'last_out':
+            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
+                                                                     self.products_map)
+        elif test_train == 'temporal':
+            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
+                self.df_clean)
+            self.n = len(self.customers_map)
+            self.m = len(self.products_map)
 
     def create_similarity_matrices(self):
         try:
@@ -167,6 +176,7 @@ class CollaborativeFilteringKUNN(object):
         if fast:
             self.create_similarity_matrices_fast()
             self.predict_ratings_matrix_fast(normalize)
+            self.fast()
         else:
             self.create_similarity_matrices()
             self.predict_ratings_matrix()
@@ -184,24 +194,21 @@ class CollaborativeFilteringKUNN(object):
         c_customers_sqrt = (1 / np.sqrt(self.c_customers)).reshape((len(self.c_customers), 1))
         a = c_customers_sqrt @ c_customers_sqrt.T
         b = self.train_matrix @ np.diag(1 / np.sqrt(self.c_products)) @ self.train_matrix.T
-        self.similarity_matrix_customers = np.multiply(a, b)
-        self.similarity_matrix_customers = (
-                                                   1 - self.alpha) * self.similarity_matrix_customers + self.alpha * self.smd_matrix
+        self.similarity_matrix_customers = (1 - self.alpha) * np.multiply(a, b)
+        self.similarity_matrix_customers += self.alpha * self.smd_matrix
         np.fill_diagonal(self.similarity_matrix_customers, 0)
 
     def predict_ratings_matrix_fast(self, normalize, bought_before=True):
         # Only use k nearest neighbours
-        products_filter = (np.argsort(np.argsort(self.similarity_matrix_products, axis=1)) >=
-                           self.similarity_matrix_products.shape[1] - self.k_products)
-        customers_filter = (np.argsort(np.argsort(self.similarity_matrix_customers, axis=0)) >=
-                            self.similarity_matrix_customers.shape[
-                                1] - self.k_customers)
+        product_ratings = self.train_matrix @ np.where(
+            np.argsort(np.argsort(self.similarity_matrix_products, axis=0), axis=0) >=
+            self.similarity_matrix_products.shape[1] - self.k_products,
+            self.similarity_matrix_products, 0)
+        customer_ratings = np.where(
+            np.argsort(np.argsort(self.similarity_matrix_customers)) >= self.similarity_matrix_customers.shape[
+                1] - self.k_customers,
+            self.similarity_matrix_customers, 0) @ self.train_matrix
 
-        products_filtered = self.similarity_matrix_products * products_filter
-        customers_filtered = self.similarity_matrix_customers * customers_filter
-
-        product_ratings = self.train_matrix @ products_filtered
-        customer_ratings = customers_filtered @ self.train_matrix
         if normalize:
             product_ratings = np.diag(1.0 / np.sqrt(self.c_customers)) @ product_ratings
             customer_ratings = customer_ratings @ np.diag(1.0 / np.sqrt(self.c_products))
@@ -210,5 +217,5 @@ class CollaborativeFilteringKUNN(object):
 
         if bought_before:
             # Set each rating to 0 for products which have already been bought.
-            non_zero = np.where(self.matrix > 0)
+            non_zero = np.where(self.train_matrix > 0)
             self.ratings_matrix[non_zero] = 0
