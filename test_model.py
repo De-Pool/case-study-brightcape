@@ -13,7 +13,7 @@ from implicit.nearest_neighbours import BM25Recommender as BM25
 from implicit.nearest_neighbours import TFIDFRecommender as TFIDF
 from scipy import sparse
 
-import models.basic_collaborative_filtering as bcf
+import models.customer_cf as ccf
 import helper_functions as hf
 
 
@@ -88,7 +88,7 @@ def all_methods(model, r, decimals=4, similar_items=False):
         n = r['n']
         r = r['r']
     else:
-        recommendations = bcf.predict_recommendation(model.ratings_matrix, r)
+        recommendations = ccf.predict_recommendation(model.ratings_matrix, r)
         test_data = model.test_data
         df_clean = model.df_clean
         products_map = model.products_map
@@ -154,6 +154,9 @@ def compute_similar_products(df_clean):
         stock_codes_df = stock_codes_df.astype({'StockCode': 'string', 'UnitPrice': 'float', 'Description': 'string'})
         stock_codes_df = stock_codes_df.set_index('StockCode', drop=False)
 
+        # 3 heuristics: the first 3 characters of the stockcode match
+        # the unitprice differs by at most 10%
+        # the description has at least 1 matching word
         def filter(stock_code, unit_price_lower, unit_price_upper, description_set):
             similar_products = stock_codes_df.apply(lambda row: (
                     (row['StockCode'][:3] == stock_code[:3] and row['StockCode'] != stock_code) and

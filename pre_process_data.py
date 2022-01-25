@@ -32,7 +32,7 @@ def process_data(filename):
     return df_raw
 
 
-def clean_data(df, plot):
+def clean_data(df, plot=False):
     if plot:
         # Inspect missing data
         for col in df.columns:

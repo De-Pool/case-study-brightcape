@@ -9,13 +9,12 @@ else:
     import numpy as np
 
 import helper_functions as hf
-import pre_process_data as ppd
 import similarity_meta_data as smd
 import split_data as split
 
 
 class CollaborativeFilteringKUNN(object):
-    def __init__(self, filename, test_train, k_products, k_customers, alpha, plot, save):
+    def __init__(self, filename, data, k_products, k_customers, alpha=0, plot=False, save=False):
         self.alpha = alpha
         self.k_products = k_products
         self.k_customers = k_customers
@@ -25,17 +24,18 @@ class CollaborativeFilteringKUNN(object):
             # Create the /kunn_cf directory
             pathlib.Path('../data/kunn_cf').mkdir(parents=True, exist_ok=True)
 
-        if isinstance(test_train, dict):
-            self.matrix = test_train['matrix']
-            self.customers_map = test_train['customers_map']
-            self.products_map = test_train['products_map']
-            self.train_matrix = test_train['train_matrix']
-            self.test_data = test_train['test_data']
-            self.df_clean = test_train['df_clean']
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-        else:
-            self.create_test_train(test_train, filename, plot)
+        if not isinstance(data, dict):
+            # data can also be: temporal, last_out, one_out
+            data = split.create_data(filename, plot, data)
+
+        self.matrix = data['matrix']
+        self.train_matrix = data['train_matrix']
+        self.customers_map = data['customers_map']
+        self.products_map = data['products_map']
+        self.test_data = data['test_data']
+        self.df_clean = data['df_clean']
+        self.n = data['n']
+        self.m = data['m']
 
         # Create customer - customer meta data similarity matrix (n x n)
         self.smd_matrix = smd.meta_data_similarity_matrix(self.df_clean, self.customers_map, self.n)
@@ -48,28 +48,6 @@ class CollaborativeFilteringKUNN(object):
         self.similarity_matrix_products = None
         self.similarity_matrix_customers = None
         self.ratings_matrix = None
-
-    def create_test_train(self, test_train, filename, plot):
-        df_raw = ppd.process_data(filename=filename)
-        self.df_clean = ppd.clean_data(df_raw, plot=plot)
-
-        if test_train != 'temporal':
-            # Create a customer - product matrix (n x m)
-            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-
-        # Split the utility matrix into train and test data
-        if test_train == 'one_out':
-            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
-        elif test_train == 'last_out':
-            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
-                                                                     self.products_map)
-        elif test_train == 'temporal':
-            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
-                self.df_clean)
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
 
     def create_similarity_matrices(self):
         try:
@@ -180,7 +158,6 @@ class CollaborativeFilteringKUNN(object):
             self.create_similarity_matrices()
             self.predict_ratings_matrix()
 
-    # Optimized algorithms, using some clever linear algebra
     def create_similarity_matrices_fast(self):
         # Compute product - product similarity matrix
         c_products_sqrt = (1 / np.sqrt(self.c_products)).reshape((len(self.c_products), 1))
@@ -216,5 +193,5 @@ class CollaborativeFilteringKUNN(object):
 
         if bought_before:
             # Set each rating to 0 for products which have already been bought.
-            non_zero = np.where(self.train_matrix > 0)
-            self.ratings_matrix[non_zero] = 0
+            nonzero = np.where(self.train_matrix == 1, 0, 1)
+            self.ratings_matrix = self.ratings_matrix * nonzero

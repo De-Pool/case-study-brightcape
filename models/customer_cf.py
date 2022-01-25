@@ -10,13 +10,12 @@ from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
 import helper_functions as hf
-import pre_process_data as ppd
 import similarity_meta_data as smd
 import split_data as split
 
 
 class CollaborativeFilteringBasic(object):
-    def __init__(self, filename, test_train, k, alpha, plot, save):
+    def __init__(self, filename, data, k, alpha=0, plot=False, save=False):
         self.k = k
         self.alpha = alpha
         self.save = save
@@ -25,17 +24,18 @@ class CollaborativeFilteringBasic(object):
             # Create the /basic_cf directory
             pathlib.Path('../data/basic_cf').mkdir(parents=True, exist_ok=True)
 
-        if isinstance(test_train, dict):
-            self.matrix = test_train['matrix']
-            self.customers_map = test_train['customers_map']
-            self.products_map = test_train['products_map']
-            self.train_matrix = test_train['train_matrix']
-            self.test_data = test_train['test_data']
-            self.df_clean = test_train['df_clean']
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-        else:
-            self.create_test_train(test_train, filename, plot)
+        if not isinstance(data, dict):
+            # data can also be: temporal, last_out, one_out
+            data = split.create_data(filename, plot, data)
+
+        self.matrix = data['matrix']
+        self.train_matrix = data['train_matrix']
+        self.customers_map = data['customers_map']
+        self.products_map = data['products_map']
+        self.test_data = data['test_data']
+        self.df_clean = data['df_clean']
+        self.n = data['n']
+        self.m = data['m']
 
         # Create customer - customer meta data similarity matrix (n x n)
         self.smd_matrix = smd.meta_data_similarity_matrix(self.df_clean, self.customers_map, self.n)
@@ -43,34 +43,12 @@ class CollaborativeFilteringBasic(object):
         self.similarity_matrix = None
         self.ratings_matrix = None
 
-    def create_test_train(self, test_train, filename, plot):
-        df_raw = ppd.process_data(filename=filename)
-        self.df_clean = ppd.clean_data(df_raw, plot=plot)
-
-        if test_train != 'temporal':
-            # Create a customer - product matrix (n x m)
-            self.matrix, self.customers_map, self.products_map = ppd.create_customer_product_matrix(self.df_clean)
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-
-        # Split the utility matrix into train and test data
-        if test_train == 'one_out':
-            self.train_matrix, self.test_data = split.leave_one_out(self.matrix, self.n)
-        elif test_train == 'last_out':
-            self.train_matrix, self.test_data = split.leave_last_out(self.matrix, self.df_clean, self.customers_map,
-                                                                     self.products_map)
-        elif test_train == 'temporal':
-            self.matrix, self.customers_map, self.products_map, self.train_matrix, self.test_data, self.df_clean = split.temporal_split(
-                self.df_clean)
-            self.n = len(self.customers_map)
-            self.m = len(self.products_map)
-
     def create_similarity_matrix(self):
         # For each customer, compute how similar they are to each other customer.
         if config.use_cupy:
-            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(np.asnumpy(self.matrix)))
+            self.similarity_matrix = np.asarray(cosine_similarity(sparse.csr_matrix(np.asnumpy(self.train_matrix))))
         else:
-            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.matrix))
+            self.similarity_matrix = cosine_similarity(sparse.csr_matrix(self.train_matrix))
         self.similarity_matrix = (1 - self.alpha) * self.similarity_matrix + self.alpha * self.smd_matrix
 
     def predict_ratings_matrix(self):
@@ -118,7 +96,6 @@ class CollaborativeFilteringBasic(object):
         else:
             self.predict_ratings_matrix()
 
-    # Optimized algorithm, using some clever linear algebra
     def predict_ratings_matrix_fast(self, bought_before=True):
         customers_filter = (np.argsort(np.argsort(self.similarity_matrix, axis=1)) >=
                             self.similarity_matrix.shape[

@@ -74,3 +74,36 @@ def get_indices_last(df_clean, customers_map, products_map):
         last_stock_code = group['StockCode'].iloc[-1]
         test_set[customers_map[str(customerID)]] = int(products_map[str(last_stock_code)])
     return test_set
+
+
+def create_data(filename, plot, split_method, alpha=0.1, r=250):
+    df_raw = ppd.process_data(filename=filename)
+    df_clean = ppd.clean_data(df_raw, plot=plot)
+
+    # Create a customer - product matrix (n x m)
+    matrix, customers_map, products_map = ppd.create_customer_product_matrix(df_clean)
+    n = len(customers_map)
+    m = len(products_map)
+
+    # Split the utility matrix into train and test data
+    if split_method == 'one_out':
+        train_matrix, test_data = leave_one_out(matrix, n)
+    elif split_method == 'last_out':
+        train_matrix, test_data = leave_last_out(matrix, df_clean, customers_map,
+                                                 products_map)
+    else:
+        matrix, customers_map, products_map, train_matrix, test_data, df_clean = temporal_split(
+            df_clean, alpha)
+
+    data = dict()
+    data['matrix'] = matrix
+    data['customers_map'] = customers_map
+    data['products_map'] = products_map
+    data['train_matrix'] = train_matrix
+    data['test_data'] = test_data
+    data['df_clean'] = df_clean
+    data['n'] = n
+    data['m'] = m
+    data['r'] = r
+
+    return data
