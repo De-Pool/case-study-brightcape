@@ -73,7 +73,7 @@ def compute_performance_multiple(recommendations, test_data, n, decimals):
     return hit_rate, ndcg, map
 
 
-def all_methods(model, r, decimals, similar_items, similar_products_dict):
+def all_methods(model, r, similar_items, similar_products_dict, decimals=4):
     if isinstance(model, (ALS, BPR, LMF, BM25, TFIDF)):
         matrix = sparse.csr_matrix(r['train_matrix'])
         model.fit(matrix.T, show_progress=False)

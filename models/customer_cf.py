@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import helper_functions as hf
 import similarity_meta_data as smd
 import split_data as split
-
+import test_model
 
 class CollaborativeFilteringBasic(object):
     def __init__(self, filename, data, k, alpha=0, plot=False, save=False):
@@ -114,3 +114,20 @@ def predict_recommendation(ratings_matrix, r):
     # Get the r highest ratings for each customer.
     recommendations = np.fliplr(np.argsort(ratings_matrix))[:, :min(r, len(ratings_matrix))]
     return recommendations
+
+
+def gridsearch(model_data, k_s, similar_items=False, similar_products_dict=None):
+    best_basic = [0]
+    best_param_basic = 0
+    all_params_basic = []
+    model_basic_cf = CollaborativeFilteringBasic('', model_data, 1, 0, False, False)
+    model_basic_cf.fit()
+    for k in k_s:
+        model_basic_cf.k = k
+        model_basic_cf.predict_ratings_matrix_fast()
+        performance_basic = test_model.all_methods(model_basic_cf, model_data['r'], similar_items, similar_products_dict)
+        all_params_basic.append([k, performance_basic])
+        if performance_basic[0] > best_basic[0]:
+            best_basic = performance_basic
+            best_param_basic = k
+    return best_basic, best_param_basic, all_params_basic

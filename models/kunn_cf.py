@@ -11,6 +11,7 @@ else:
 import helper_functions as hf
 import similarity_meta_data as smd
 import split_data as split
+import test_model
 
 
 class CollaborativeFilteringKUNN(object):
@@ -195,3 +196,26 @@ class CollaborativeFilteringKUNN(object):
             # Set each rating to 0 for products which have already been bought.
             nonzero = np.where(self.train_matrix == 1, 0, 1)
             self.ratings_matrix = self.ratings_matrix * nonzero
+
+
+def gridsearch(model_data, k_cs, k_ps, similar_items=False, similar_products_dict=None):
+    best_kunn = [0]
+    best_params_kunn = []
+    all_params_kunn = []
+
+    model_kunn = CollaborativeFilteringKUNN('', model_data, 1, 1, 0, False, False)
+    model_kunn.create_similarity_matrices_fast()
+    for k_c in k_cs:
+        for k_p in k_ps:
+            model_kunn.k_products = k_p
+            model_kunn.k_customers = k_c
+
+            model_kunn.predict_ratings_matrix_fast(True)
+            performance_kunn = test_model.all_methods(model_kunn, model_data['r'], similar_items, similar_products_dict)
+
+            all_params_kunn.append([k_c, k_p, performance_kunn])
+            if performance_kunn[0] > best_kunn[0]:
+                best_kunn = performance_kunn
+                best_params_kunn = [k_c, k_p]
+
+    return best_kunn, best_params_kunn, all_params_kunn

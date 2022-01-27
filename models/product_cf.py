@@ -10,6 +10,7 @@ from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
 import split_data as split
+import test_model
 
 
 class CollaborativeFilteringProduct(object):
@@ -61,3 +62,20 @@ class CollaborativeFilteringProduct(object):
     def fit(self):
         self.create_similarity_matrix()
         self.predict_ratings_matrix()
+
+
+def gridsearch(data, k_s, similar_items=False, similar_products_dict=None):
+    best_basic = [0]
+    best_param_basic = 0
+    all_params_basic = []
+    model_product_cf = CollaborativeFilteringProduct('', data, 1, 0, False, False)
+    model_product_cf.fit()
+    for k in k_s:
+        model_product_cf.k = k
+        model_product_cf.predict_ratings_matrix()
+        performance_basic = test_model.all_methods(model_product_cf, data['r'], similar_items, similar_products_dict)
+        all_params_basic.append([k, performance_basic])
+        if performance_basic[0] > best_basic[0]:
+            best_basic = performance_basic
+            best_param_basic = k
+    return best_basic, best_param_basic, all_params_basic

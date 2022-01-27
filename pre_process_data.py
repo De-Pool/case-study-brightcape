@@ -90,7 +90,7 @@ def create_customer_product_matrix(df_clean):
     n = len(unique_customers)
     m = len(unique_products)
 
-    # Create a 1 to 1 mapping for both customers and products
+    # Create a 1 to 1 mapping for both customers and products, 3660 -> 3112 , 4334 -> 4033
     # (map the CustomerID and StockCode to an index, ranging from (0, n) and (0, m)
     customers_map = dict()
     for i in range(n):

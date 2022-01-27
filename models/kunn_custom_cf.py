@@ -5,6 +5,7 @@ from scipy import sparse
 from sklearn.metrics.pairwise import cosine_similarity
 
 import split_data as split
+import test_model
 
 
 class CollaborativeFilteringKUNNCustom(object):
@@ -16,7 +17,7 @@ class CollaborativeFilteringKUNNCustom(object):
 
         if save:
             # Create the /product_cf directory
-            pathlib.Path('../data/product_cf').mkdir(parents=True, exist_ok=True)
+            pathlib.Path('../data/kunn_custom').mkdir(parents=True, exist_ok=True)
 
         if not isinstance(data, dict):
             # data can also be: temporal, last_out, one_out
@@ -60,3 +61,27 @@ class CollaborativeFilteringKUNNCustom(object):
     def fit(self):
         self.create_similarity_matrices()
         self.predict_ratings_matrix()
+
+
+def gridsearch(model_data, k_cs, k_ps, similar_items=False, similar_products_dict=None):
+    best_kunn_custom = [0]
+    best_params_kunn_custom = []
+    all_params_kunn_custom = []
+
+    model_kunn_custom = CollaborativeFilteringKUNNCustom('', model_data, 1, 1, 0, False, False)
+    model_kunn_custom.create_similarity_matrices()
+    for k_c in k_cs:
+        for k_p in k_ps:
+            model_kunn_custom.k_p = k_p
+            model_kunn_custom.k_c = k_c
+
+            model_kunn_custom.predict_ratings_matrix()
+            performance_kunn_custom = test_model.all_methods(model_kunn_custom, model_data['r'], similar_items,
+                                                             similar_products_dict)
+
+            all_params_kunn_custom.append([k_c, k_p, performance_kunn_custom])
+            if performance_kunn_custom[0] > best_kunn_custom[0]:
+                best_kunn_custom = performance_kunn_custom
+                best_params_kunn_custom = [k_c, k_p]
+
+    return best_kunn_custom, best_params_kunn_custom, all_params_kunn_custom
