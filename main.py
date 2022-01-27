@@ -53,13 +53,13 @@ def varied_test_size(recommendations, similar_items):
         model_kunn.fit()
 
         performance_basic = test.all_methods(model_basic_cf, recommendations, similar_items,
-                                                   similar_products_dict)
+                                             similar_products_dict)
         performance_product_cf = test.all_methods(model_product_cf, recommendations, similar_items,
-                                                        similar_products_dict)
-        performance_kunn = test.all_methods(model_kunn, recommendations, similar_items,
                                                   similar_products_dict)
+        performance_kunn = test.all_methods(model_kunn, recommendations, similar_items,
+                                            similar_products_dict)
         performance_ALS = test.all_methods(ALS(factors=30, iterations=50), model_data, similar_items,
-                                                 similar_products_dict)
+                                           similar_products_dict)
         y_hit_rate.append([performance_basic[0], performance_product_cf[0], performance_kunn[0], performance_ALS[0]])
         y_ncdg.append([performance_basic[1], performance_product_cf[1], performance_kunn[1], performance_ALS[1]])
         y_map.append([performance_basic[2], performance_product_cf[2], performance_kunn[2], performance_ALS[2]])
@@ -99,7 +99,7 @@ def varied_recommendations(split_method, alpha, similar_items):
         performance_product_cf = test.all_methods(model_product_cf, r, similar_items, similar_products_dict)
         performance_kunn = test.all_methods(model_kunn, r, similar_items, similar_products_dict)
         performance_ALS = test.all_methods(ALS(factors=30, iterations=50), data, similar_items,
-                                                 similar_products_dict)
+                                           similar_products_dict)
 
         y_hit_rate.append([performance_basic[0], performance_product_cf[0], performance_kunn[0], performance_ALS[0]])
         y_ncdg.append([performance_basic[1], performance_product_cf[1], performance_kunn[1], performance_ALS[1]])
@@ -123,20 +123,20 @@ def best_models(split_method, recommendations, alpha, similar_items):
     model_basic_cf = ccf.CollaborativeFilteringBasic(filename_xlsx, data, k_c_b)
     model_basic_cf.fit()
     performance_basic = test.all_methods(model_basic_cf, recommendations, similar_items,
-                                               similar_products_dict)
+                                         similar_products_dict)
 
     k_p_b = 40
     model_product_cf = pcf.CollaborativeFilteringProduct(filename_xlsx, data, k_p_b)
     model_product_cf.fit()
     performance_product_cf = test.all_methods(model_product_cf, recommendations, similar_items,
-                                                    similar_products_dict)
+                                              similar_products_dict)
 
     k_c_custom = 180
     k_p_custom = 10
     model_kunn_custom = kunn_custom.CollaborativeFilteringKUNNCustom(filename_xlsx, data, k_c_custom, k_p_custom)
     model_kunn_custom.fit()
     performance_kunn_custom = test.all_methods(model_kunn_custom, recommendations, similar_items,
-                                                     similar_products_dict)
+                                               similar_products_dict)
 
     # k nearest neighbours for customers
     k_c = 0
@@ -145,12 +145,12 @@ def best_models(split_method, recommendations, alpha, similar_items):
     model_kunn = kunn.CollaborativeFilteringKUNN(filename_xlsx, data, k_p, k_c)
     model_kunn.fit()
     performance_kunn = test.all_methods(model_kunn, recommendations, similar_items,
-                                              similar_products_dict)
+                                        similar_products_dict)
 
     factors = 30
     iterations = 50
     performance_ALS = test.all_methods(ALS(factors=factors, iterations=iterations), data, similar_items,
-                                             similar_products_dict)
+                                       similar_products_dict)
 
     print("basic customer", performance_basic)
     print("basic product", performance_product_cf)

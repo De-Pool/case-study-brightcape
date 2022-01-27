@@ -9,7 +9,7 @@ import test_model
 
 
 class CollaborativeFilteringKUNNCustom(object):
-    def __init__(self, filename, data, k_c, k_p, alpha=0, plot=False, save=False):
+    def __init__(self, filename, model_data, k_c, k_p, alpha=0, plot=False, save=False):
         self.k_c = k_c
         self.k_p = k_p
         self.alpha = alpha
@@ -19,18 +19,18 @@ class CollaborativeFilteringKUNNCustom(object):
             # Create the /product_cf directory
             pathlib.Path('../data/kunn_custom').mkdir(parents=True, exist_ok=True)
 
-        if not isinstance(data, dict):
+        if not isinstance(model_data, dict):
             # data can also be: temporal, last_out, one_out
-            data = split.create_model_data(filename, plot, data)
+            data = split.create_model_data(filename, plot, model_data)
 
-        self.matrix = data['matrix']
-        self.train_matrix = data['train_matrix']
-        self.customers_map = data['customers_map']
-        self.products_map = data['products_map']
-        self.test_data = data['test_data']
-        self.df_clean = data['df_clean']
-        self.n = data['n']
-        self.m = data['m']
+        self.matrix = model_data['matrix']
+        self.train_matrix = model_data['train_matrix']
+        self.customers_map = model_data['customers_map']
+        self.products_map = model_data['products_map']
+        self.test_data = model_data['test_data']
+        self.df_clean = model_data['df_clean']
+        self.n = model_data['n']
+        self.m = model_data['m']
         self.similarity_matrix_p = None
         self.similarity_matrix_c = None
         self.ratings_matrix = None

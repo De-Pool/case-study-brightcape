@@ -95,7 +95,8 @@ def all_methods(model, r, similar_items, similar_products_dict, decimals=4):
         n = model.n
 
     if similar_items:
-        extra_recommendations = find_extra_recommendations(test_data, recommendations, products_map, similar_products_dict)
+        extra_recommendations = find_extra_recommendations(test_data, recommendations, products_map,
+                                                           similar_products_dict)
 
         new_test_set = dict()
         for i in range(n):
