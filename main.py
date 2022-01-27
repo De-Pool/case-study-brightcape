@@ -20,14 +20,15 @@ import test_model as test
 
 def main():
     split_method = 'temporal'
-    recommendations = 250
-    alpha = 0.1
+    amount_recommendations = 250
+    alpha = 0.05
     similar_items = False
+    recommendations = np.arange(1, 300, 5)
 
-    best_models(split_method, recommendations, alpha, similar_items)
-    find_best_parameters(split_method, recommendations, alpha, similar_items)
-    varied_test_size(recommendations, similar_items)
-    varied_recommendations(split_method, alpha, similar_items)
+    best_models(split_method, amount_recommendations, alpha, similar_items)
+    find_best_parameters(split_method, amount_recommendations, alpha, similar_items)
+    varied_test_size(amount_recommendations, similar_items)
+    varied_recommendations(split_method, alpha, similar_items, recommendations)
 
 
 def varied_test_size(recommendations, similar_items):
@@ -73,9 +74,7 @@ def varied_test_size(recommendations, similar_items):
          'Performance of models with varied test set size')
 
 
-def varied_recommendations(split_method, alpha, similar_items):
-    rs = np.arange(1, 20, 5)
-
+def varied_recommendations(split_method, alpha, similar_items, rs):
     data = split_data.create_model_data('./data/data-raw.xlsx', split_method, alpha)
     similar_products_dict = test.compute_similar_products(data['df_clean'])
 
@@ -182,16 +181,16 @@ def find_best_parameters(split_method, recommendations, alpha, similar_items):
     iterations = np.arange(0, 200, 10)
     iterations[0] = 1
 
-    # k_c = 140, k_p = 180
-    best, best_params, all_params = kunn_custom.gridsearch(data, k_cs, [180], similar_items, similar_products_dict)
-    x_customer_kunn_c, y_customer_kunn_c = create_x_y(all_params, 2, 0)
-    plot3(x_customer_kunn_c, y_customer_kunn_c, performance_measures, 'k-customer',
-          'Performance of k-UNN custom collaborative filtering')
-
-    best, best_params, all_params = kunn_custom.gridsearch(data, [10], k_ps, similar_items, similar_products_dict)
-    x_product_kunn_c, y_product_kunn_c = create_x_y(all_params, 2, 1)
-    plot3(x_product_kunn_c, y_product_kunn_c, performance_measures, 'k-product',
-          'Performance of k-UNN custom collaborative filtering')
+    # # k_c = 140, k_p = 180
+    # best, best_params, all_params = kunn_custom.gridsearch(data, k_cs, [180], similar_items, similar_products_dict)
+    # x_customer_kunn_c, y_customer_kunn_c = create_x_y(all_params, 2, 0)
+    # plot3(x_customer_kunn_c, y_customer_kunn_c, performance_measures, 'k-customer',
+    #       'Performance of k-UNN custom collaborative filtering')
+    #
+    # best, best_params, all_params = kunn_custom.gridsearch(data, [10], k_ps, similar_items, similar_products_dict)
+    # x_product_kunn_c, y_product_kunn_c = create_x_y(all_params, 2, 1)
+    # plot3(x_product_kunn_c, y_product_kunn_c, performance_measures, 'k-product',
+    #       'Performance of k-UNN custom collaborative filtering')
 
     # factor = 30, iteration = 60
     best, best_params, all_params = gridsearch_als(data, factors, [60], similar_items, similar_products_dict)
