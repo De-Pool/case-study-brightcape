@@ -1,4 +1,5 @@
 import config
+import helper_functions
 import split_data
 
 if config.use_cupy:
@@ -23,12 +24,17 @@ def main():
     amount_recommendations = 250
     alpha = 0.05
     similar_items = False
-    recommendations = np.arange(1, 300, 5)
+    recommendations = np.arange(1, 50, 1)
 
     best_models(split_method, amount_recommendations, alpha, similar_items)
     find_best_parameters(split_method, amount_recommendations, alpha, similar_items)
     varied_test_size(amount_recommendations, similar_items)
     varied_recommendations(split_method, alpha, similar_items, recommendations)
+
+    # Train best model and generate the final deliverable
+    model_data = split_data.create_model_data('./data/data-raw.xlsx', split_method='temporal', alpha=0)
+    create_recommendations(kunn.CollaborativeFilteringKUNN('', model_data, k_products=80, k_customers=0),
+                           amount_recommendations=50)
 
 
 def varied_test_size(recommendations, similar_items):
@@ -237,6 +243,22 @@ def gridsearch_als(data, factors, iterations, similar_items=False, similar_produ
                 best_als = performance_als
                 best_param_als = [factor, iteration]
     return best_als, best_param_als, all_params_als
+
+
+# Create final deliverable
+def create_recommendations(model, amount_recommendations):
+    model.fit()
+    recommendations_matrix = ccf.predict_recommendation(model.ratings_matrix, amount_recommendations)
+    recommendations_stock_codes = np.empty(recommendations_matrix.shape, dtype=object)
+    customer_map_r = list(model.customers_map)
+    for stock_code, index in model.products_map.items():
+        recommendations_stock_codes[recommendations_matrix == index] = str(stock_code)
+
+    recommendations = dict()
+    for i in range(len(recommendations_matrix)):
+        recommendations[customer_map_r[i]] = recommendations_stock_codes[i].tolist()
+
+    helper_functions.save_dict(recommendations, 'recommendations.json')
 
 
 if __name__ == '__main__':
