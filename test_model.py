@@ -73,7 +73,7 @@ def compute_performance_multiple(recommendations, test_data, n, decimals):
     return hit_rate, ndcg, map
 
 
-def all_methods(model, r, decimals=4, similar_items=False):
+def all_methods(model, r, decimals, similar_items, similar_products_dict):
     if isinstance(model, (ALS, BPR, LMF, BM25, TFIDF)):
         matrix = sparse.csr_matrix(r['train_matrix'])
         model.fit(matrix.T, show_progress=False)
@@ -95,7 +95,7 @@ def all_methods(model, r, decimals=4, similar_items=False):
         n = model.n
 
     if similar_items:
-        extra_recommendations = find_extra_recommendations(test_data, recommendations, products_map, df_clean)
+        extra_recommendations = find_extra_recommendations(test_data, recommendations, products_map, similar_products_dict)
 
         new_test_set = dict()
         for i in range(n):
@@ -110,8 +110,7 @@ def all_methods(model, r, decimals=4, similar_items=False):
 
 # test_set is either an array or dict, recommendations is matrix
 # returns a dict, which is the new test set
-def find_extra_recommendations(test_set, recommendations, products_map, df_clean):
-    similar_products_dict = compute_similar_products(df_clean)
+def find_extra_recommendations(test_set, recommendations, products_map, similar_products_dict):
     products_map_r = list(products_map)
     recommendations_stock_codes = np.empty(recommendations.shape, dtype=object)
     test_set_stock_codes = dict()
@@ -164,11 +163,9 @@ def compute_similar_products(df_clean):
                     (len(set(row['Description'].split(" ")).intersection(description_set)) >= 1)), axis=1)
             return similar_products[similar_products].index.tolist()
 
-        def find_similar_products(row):
-            return filter(row['StockCode'], row['UnitPrice'] * 0.9, row['UnitPrice'] * 1.1,
-                          set(row['Description'].split(' ')))
-
-        similar_products_dict = stock_codes_df.apply(lambda row: find_similar_products(row), axis=1).to_dict()
+        similar_products_dict = stock_codes_df.apply(
+            lambda row: filter(row['StockCode'], row['UnitPrice'] * 0.9, row['UnitPrice'] * 1.1,
+                               set(row['Description'].split(' '))), axis=1).to_dict()
         hf.save_dict(similar_products_dict, 'similar_products_dict.json')
 
     return similar_products_dict

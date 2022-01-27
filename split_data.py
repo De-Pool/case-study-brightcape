@@ -76,7 +76,7 @@ def get_indices_last(df_clean, customers_map, products_map):
     return test_set
 
 
-def create_data(filename, plot, split_method, alpha=0.1, r=250):
+def create_model_data(filename, plot, split_method, alpha=0.1, r=250):
     df_raw = ppd.process_data(filename=filename)
     df_clean = ppd.clean_data(df_raw, plot=plot)
 

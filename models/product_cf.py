@@ -24,7 +24,7 @@ class CollaborativeFilteringProduct(object):
 
         if not isinstance(data, dict):
             # data can also be: temporal, last_out, one_out
-            data = split.create_data(filename, plot, data)
+            data = split.create_model_data(filename, plot, data)
 
         self.matrix = data['matrix'].T
         self.train_matrix = data['train_matrix'].T
