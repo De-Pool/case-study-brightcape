@@ -51,7 +51,16 @@ def concat(a, b):
         return [a, b.tolist()]
     elif isinstance(a, list) and isinstance(b, list):
         return [*a, *b]
-
+    elif isinstance(a, np.int64) and isinstance(b, list):
+        return [a.tolist(), *b]
+    elif isinstance(a, np.int64) and isinstance(b, int):
+        return [a.tolist(), b]
+    elif isinstance(a, np.int64) and isinstance(b, np.int64):
+        return [a.tolist(), b.tolist()]
+    elif isinstance(a, list) and isinstance(b, np.int64):
+        return [*a, b.tolist()]
+    elif isinstance(a, int) and isinstance(b, np.int64):
+        return [a, b.tolist()]
 
 # Plot 3 lines in the same graph.
 def plot3(xs, ys, labels, x_lbl, title, legend=True):

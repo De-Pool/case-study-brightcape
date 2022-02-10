@@ -133,3 +133,20 @@ def gridsearch(model_data, k_s, similar_items=False, similar_products_dict=None)
             best_basic = performance_basic
             best_param_basic = k
     return best_basic, best_param_basic, all_params_basic
+
+
+def gridsearch_alpha(model_data, k, alphas, similar_items=False, similar_products_dict=None):
+    best_basic = [0]
+    best_param_basic = 0
+    all_params_basic = []
+
+    for alpha in alphas:
+        model_basic_cf = CollaborativeFilteringBasic('', model_data, k, alpha=alpha)
+        model_basic_cf.fit()
+        performance_basic = test_model.all_methods(model_basic_cf, model_data['r'], similar_items,
+                                                   similar_products_dict)
+        all_params_basic.append([k, performance_basic])
+        if performance_basic[0] > best_basic[0]:
+            best_basic = performance_basic
+            best_param_basic = alpha
+    return best_basic, best_param_basic, all_params_basic

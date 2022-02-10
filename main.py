@@ -20,16 +20,18 @@ import test_model as test
 
 
 def main():
+    filename_xlsx = './data/data-raw.xlsx'
+    # Split method can be: temporal, one_out, last_out
     split_method = 'temporal'
     amount_recommendations = 250
     alpha = 0.05
     similar_items = False
     recommendations = np.arange(1, 50, 1)
 
-    best_models(split_method, amount_recommendations, alpha, similar_items)
-    find_best_parameters(split_method, amount_recommendations, alpha, similar_items)
-    varied_test_size(amount_recommendations, similar_items)
-    varied_recommendations(split_method, alpha, similar_items, recommendations)
+    # best_models(split_method, amount_recommendations, alpha, similar_items, filename_xlsx)
+    find_best_parameters(split_method, amount_recommendations, alpha, similar_items, filename_xlsx)
+    varied_test_size(amount_recommendations, similar_items, filename_xlsx)
+    varied_recommendations(split_method, alpha, similar_items, recommendations, filename_xlsx)
 
     # Train best model and generate the final deliverable
     model_data = split_data.create_model_data('./data/data-raw.xlsx', split_method='temporal', alpha=0)
@@ -37,7 +39,7 @@ def main():
                            amount_recommendations=50)
 
 
-def varied_test_size(recommendations, similar_items):
+def varied_test_size(recommendations, similar_items, filename_xlsx):
     alphas = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.35,
               0.4]
 
@@ -46,7 +48,7 @@ def varied_test_size(recommendations, similar_items):
     y_map = []
 
     for alpha in alphas:
-        model_data = split_data.create_model_data('./data/data-raw.xlsx', split_method='temporal', alpha=alpha,
+        model_data = split_data.create_model_data(filename_xlsx, split_method='temporal', alpha=alpha,
                                                   r=recommendations)
         similar_products_dict = test.compute_similar_products(model_data['df_clean'])
 
@@ -80,8 +82,8 @@ def varied_test_size(recommendations, similar_items):
          'Performance of models with varied test set size')
 
 
-def varied_recommendations(split_method, alpha, similar_items, rs):
-    data = split_data.create_model_data('./data/data-raw.xlsx', split_method, alpha)
+def varied_recommendations(split_method, alpha, similar_items, rs, filename_xlsx):
+    data = split_data.create_model_data(filename_xlsx, split_method, alpha)
     similar_products_dict = test.compute_similar_products(data['df_clean'])
 
     model_basic_cf = ccf.CollaborativeFilteringBasic('', data, k=200)
@@ -119,8 +121,7 @@ def varied_recommendations(split_method, alpha, similar_items, rs):
          'Performance of models with varied amounts of recommendations')
 
 
-def best_models(split_method, recommendations, alpha, similar_items):
-    filename_xlsx = './data/data-raw.xlsx'
+def best_models(split_method, recommendations, alpha, similar_items, filename_xlsx):
     data = split_data.create_model_data(filename_xlsx, split_method, alpha)
     similar_products_dict = test.compute_similar_products(data['df_clean'])
 
@@ -164,8 +165,8 @@ def best_models(split_method, recommendations, alpha, similar_items):
     print("als", performance_ALS)
 
 
-def find_best_parameters(split_method, recommendations, alpha, similar_items):
-    data = split_data.create_model_data('./data/data-raw.xlsx', split_method, alpha=alpha, r=recommendations)
+def find_best_parameters(split_method, recommendations, alpha, similar_items, filename_xlsx):
+    data = split_data.create_model_data(filename_xlsx, split_method, alpha=alpha, r=recommendations)
     similar_products_dict = test.compute_similar_products(data['df_clean'])
     performance_measures = ['Hit rate', 'NCDG', 'MAP']
 
@@ -197,6 +198,17 @@ def find_best_parameters(split_method, recommendations, alpha, similar_items):
     # x_product_kunn_c, y_product_kunn_c = create_x_y(all_params, 2, 1)
     # plot3(x_product_kunn_c, y_product_kunn_c, performance_measures, 'k-product',
     #       'Performance of k-UNN custom collaborative filtering')
+
+    # Find best alpha when using the meta data similarity matrix
+    # alphas = [0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.35,
+    #           0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+    alphas = [0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.125, 0.15, 0.175, 0.2]
+    best_basic, best_param_basic, all_params_basic = ccf.gridsearch_alpha(data, 200, alphas, similar_items,
+                                                                          similar_products_dict)
+    print(best_basic, best_param_basic)
+    x, y = create_x_y(all_params_basic, 1, 0)
+    plot3(alphas, y, performance_measures, 'Alpha',
+          'Performance of customer-customer using a meta data similarity matrix')
 
     # factor = 30, iteration = 60
     best, best_params, all_params = gridsearch_als(data, factors, [60], similar_items, similar_products_dict)
